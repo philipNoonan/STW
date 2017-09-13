@@ -233,6 +233,7 @@ int main(int, char**)
 
 			}
 
+			krender.drawLightModel();
 			//krender.renderFlow(flow.ptr());
 
 

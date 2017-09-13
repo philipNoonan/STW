@@ -2,8 +2,8 @@
 
 layout(local_size_x = 32, local_size_y = 32) in;
 
-layout(binding= 4, rgba32f) uniform image2D InputImage;
-layout(binding= 5, rgba32f) uniform image2D OutputImage;
+layout(binding= 0, rgba32f) uniform image2D InputImage;
+layout(binding= 1, rgba32f) uniform image2D OutputImage;
     
     
 void main()

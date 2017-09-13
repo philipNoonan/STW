@@ -117,7 +117,7 @@ class kRender
 
 		void renderFlow(unsigned char* flowPtr);
 		void drawPoints();
-
+		void drawLightModel();
 		void setComputeWindowPosition();
 
 		void setCameraParams(glm::vec4 camPams)
@@ -144,12 +144,16 @@ private:
 	//GLfloat* m_vertices; 
 	std::vector<unsigned int> m_indices;
 
+	GLuint m_VAO_Pointcloud;
+	GLuint m_buf_Pointcloud;
+	std::vector<float> m_verticesPointcloud;
 
 
 	GLuint m_programID;
 	GLuint m_ProjectionID;
 	GLuint m_MvpID;
 	GLuint m_ModelID;
+	GLuint m_ViewProjectionID;
 
 	GLuint m_ambientID;
 	GLuint m_lightID;
@@ -158,6 +162,7 @@ private:
 	GLuint m_ColorSubroutineID;
 	GLuint m_FlowSubroutineID;
 	GLuint m_VertexSubroutineID;
+	GLuint m_PointsSubroutineID;
 	GLuint m_colorTypeSubroutineID;
 
 	GLuint m_fboComputeHandle;

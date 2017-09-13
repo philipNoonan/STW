@@ -64,6 +64,12 @@ vec4 fromVertex()
 
 }
 
+subroutine(getColor)
+vec4 fromPoints()
+{
+	return vec4(1.0f,0.0f,0.0f,1.0f);
+}
+
 void main()
 {
 	color = getColorSelection();

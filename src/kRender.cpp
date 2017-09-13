@@ -67,6 +67,7 @@ void kRender::setLocations()
 	m_ProjectionID = glGetUniformLocation(renderProg.getHandle(), "projection");
 	m_MvpID = glGetUniformLocation(renderProg.getHandle(), "MVP");
 	m_ModelID = glGetUniformLocation(renderProg.getHandle(), "model");
+	m_ViewProjectionID = glGetUniformLocation(renderProg.getHandle(), "ViewProjection");
 
 	m_ambientID = glGetUniformLocation(renderProg.getHandle(), "ambient");
 	m_lightID = glGetUniformLocation(renderProg.getHandle(), "light");
@@ -75,6 +76,7 @@ void kRender::setLocations()
 	m_ColorSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromColor");
 	m_FlowSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromFlow");
 	m_VertexSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromVertex");
+	m_PointsSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromPoints");
 	m_colorTypeSubroutineID = glGetSubroutineUniformLocation(renderProg.getHandle(), GL_FRAGMENT_SHADER, "getColorSelection");
 
 	m_vertex3DSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_VERTEX_SHADER, "fromVertex3D");
@@ -121,6 +123,11 @@ void kRender::setVertPositions()
 	};
 
 	m_indices = indices;
+
+	std::vector<float>  verticiesPointcloud;
+	verticiesPointcloud.resize(m_depth_height * m_depth_width * 3);
+
+	m_verticesPointcloud = verticiesPointcloud;
 }
 
 
@@ -149,6 +156,22 @@ void kRender::setTextures()
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
 	glBindVertexArray(0);
+
+	// set up VOA for pointcloud
+	glGenVertexArrays(1, &m_VAO_Pointcloud);
+	glBindVertexArray(m_VAO_Pointcloud);
+
+	// set up for pointcloud SSBO
+	glGenBuffers(1, &m_buf_Pointcloud);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buf_Pointcloud);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesPointcloud.size() * sizeof(float), &m_verticesPointcloud[0], GL_DYNAMIC_DRAW);
+
+	// bind buffer to VAO
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // 3 floats per vertex, no stride, no padding
+	glEnableVertexAttribArray(0);
+	glBindVertexArray(0);
+
 
 
 
@@ -263,7 +286,7 @@ void kRender::renderLiveVideoWindow(float* depthArray)
 	glBindTexture(GL_TEXTURE_2D, m_textureDepth);
 	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
 	glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, 512, 424, GL_RED, GL_FLOAT, depthArray);
-	glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
+	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
 	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
 	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
 
@@ -460,9 +483,9 @@ void kRender::drawPoints()
 	// get inverse camera matrix
 	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams);
 
-	// bind compute FBO
-	glBindImageTexture(0, m_textureDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
-	glBindImageTexture(4, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	// bind image textures 
+	glBindImageTexture(1, m_textureDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+	glBindImageTexture(2, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 	computeProg.use();
 	computeProg.setUniform("invK", invK);
@@ -473,7 +496,8 @@ void kRender::drawPoints()
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-	glBindImageTexture(5, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	glBindImageTexture(0, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	glBindImageTexture(1, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	v2nProg.use();
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -483,37 +507,83 @@ void kRender::drawPoints()
 
 
 
-	// Camera matrix
+	//// Camera matrix
 	//glm::mat4 View = glm::lookAt(
-	//	glm::vec3(4, 3, 3), // Camera is at (4,3,3), in World Space
+	//	glm::vec3(0, 0, 100), // Camera is at (4,3,3), in World Space
 	//	glm::vec3(0, 0, 0), // and looks at the origin
 	//	glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
 	//);
 
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 	glm::mat4 model = glm::mat4(1.0f);
-
-	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
-
+	glm::mat4 Projection = glm::perspective(glm::radians(60.f), 1.0f, 0.1f, 1500.0f);
+	//glm::mat4 Projection = glm::ortho(-1000.0f, 1000.0f, -1000.0f, 1000.0f, -1.0f, 1000.0f);
 	glm::mat4 MVP = Projection * View * model;
-
+	glm::mat4 VP = Projection * View;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	glViewport(0,0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	renderProg.use();
 
-	//// Bind Textures using texture units
+	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID);
+
+	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID);
+
+	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
+	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
+
+	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
+	glUniformMatrix4fv(m_ViewProjectionID, 1, GL_FALSE, glm::value_ptr(VP));
+
+	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+	
+	glPointSize(2.0f);
+	glBindVertexArray(m_VAO_Pointcloud);
+	glDrawArrays(GL_POINTS, 0, 512*424*3);
+	glBindVertexArray(0);
+
+
+
+
+
+
+
+	// convert depth points to vertex 3D
+
+
+
+
+
+}
+
+void kRender::drawLightModel()
+{
+	glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
+	glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+	glm::mat4 model = glm::mat4(1.0f);
+	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
+	glm::mat4 MVP = Projection * View * model;
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	glViewport((w / 2) - ((m_depth_width * m_render_scale_width) / 2), (h / 2) - ((m_depth_height * m_render_scale_height) / 2), m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	renderProg.use();
+
+	// Bind Textures using texture units
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_textureVertex);
 
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, m_textureNormal);
-	//glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID);
+
+	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
 
 	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
 
@@ -529,16 +599,7 @@ void kRender::drawPoints()
 
 	glBindVertexArray(0);
 
-
-
-	// convert depth points to vertex 3D
-
-
-
-
-
 }
-
 
 
 
