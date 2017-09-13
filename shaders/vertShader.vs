@@ -8,6 +8,7 @@ uniform mat4 projection;
 uniform mat4 MVP;
 
 out vec2 TexCoord;
+out float vertCol;
 
 subroutine vec4 getImagePosition();
 subroutine uniform getImagePosition getPositionSelection;
@@ -39,4 +40,5 @@ void main()
 	// We swap the y-axis by substracing our coordinates from 1. This is done because most images have the top y-axis inversed with OpenGL's top y-axis.
 	//TexCoord = texCoord;
 	TexCoord = vec2(texCoord.x, 1 - texCoord.y);
+	vertCol = -position.z;
 }

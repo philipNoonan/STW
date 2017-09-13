@@ -515,12 +515,14 @@ void kRender::drawPoints()
 	//);
 
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 200.1f));
 	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 Projection = glm::perspective(glm::radians(60.f), 1.0f, 0.1f, 1500.0f);
-	//glm::mat4 Projection = glm::ortho(-1000.0f, 1000.0f, -1000.0f, 1000.0f, -1.0f, 1000.0f);
+	model = glm::rotate(model, 0.0f, glm::vec3(0, 1, 0));
+
+	glm::mat4 Projection = glm::perspective(glm::radians(70.f), 1.0f, 0.1f, 1500.0f);
+	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1000.0f);
 	glm::mat4 MVP = Projection * View * model;
-	glm::mat4 VP = Projection * View;
+	glm::mat4 VP = Projection * View * model;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
 	glViewport(0,0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);

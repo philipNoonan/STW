@@ -1,5 +1,6 @@
 #version 430 core
 in vec2 TexCoord;
+in float vertCol;
 
 layout(location = 0) out vec4 color;
 
@@ -67,7 +68,8 @@ vec4 fromVertex()
 subroutine(getColor)
 vec4 fromPoints()
 {
-	return vec4(1.0f,0.0f,0.0f,1.0f);
+	float tMod = mod(vertCol / 100.0f, 1.0f); 
+	return vec4(tMod,tMod,tMod,1.0f);
 }
 
 void main()

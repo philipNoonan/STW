@@ -232,6 +232,8 @@ void Freenect2Camera::captureLoop()
 
 	while (m_status == CAPTURING)
 	{
+		//m_frames_ready = false;
+
 		if (!listener.waitForNewFrame(frames, 10 * 1000)) // 10 sconds
 		{
 			std::cout << "timeout!" << std::endl;
