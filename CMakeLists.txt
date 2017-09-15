@@ -47,11 +47,13 @@ file(GLOB_RECURSE SRC "src/*")
 file(GLOB_RECURSE GFX "graphics/*")
 file(GLOB_RECURSE SHD "shaders/*")
 file(GLOB_RECURSE HDR "include/*")
+file(GLOB_RECURSE RES "resources/*")
 
 
 list(APPEND SRC ${SHD})
 list(APPEND SRC ${GFX})
 list(APPEND SRC ${HDR})
+list(APPEND SRC ${RES})
 
 
 #imgui include - not currently on the git 
@@ -104,5 +106,17 @@ add_custom_command(
         COMMAND ${CMAKE_COMMAND} -E copy_directory
                 ${CMAKE_SOURCE_DIR}/shaders/
                 ${PROJECT_BINARY_DIR}/shaders/)
+				
+add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/resources/
+                ${PROJECT_BINARY_DIR}/bin/$(Configuration)/resources/)
+				
+add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_SOURCE_DIR}/resources/
+                ${PROJECT_BINARY_DIR}/resources/)
 
 

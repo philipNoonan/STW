@@ -47,3 +47,4 @@ float bigDepthArray[colorWidth * (colorHeight + 2)]; // 1082 is not a typo
 													 //float color[512 * 424];
 float depthArray[depthWidth * depthHeight];
 float infraredArray[depthWidth * depthHeight];
+int colorDepthMap[depthWidth * depthHeight];

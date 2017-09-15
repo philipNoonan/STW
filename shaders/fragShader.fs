@@ -1,6 +1,7 @@
 #version 430 core
 in vec2 TexCoord;
 in float vertCol;
+in vec4 TexColor;
 
 layout(location = 0) out vec4 color;
 
@@ -50,7 +51,7 @@ vec4 fromVertex()
 	vec4 tNormal = texture(currentTextureNormal, TexCoord);
 
 	//vec3 proj = model * vec4(tVertex.xyz, 1.0f);
-	if (tVertex.z > 1000.0f || tNormal.x > 1.5f)
+	if (tVertex.z > 4000.0f || tNormal.x > 1.5f)
 	{
 		return vec4(0.0f,0.0f,0.0f,0.0f);
 	}
@@ -69,7 +70,16 @@ subroutine(getColor)
 vec4 fromPoints()
 {
 	float tMod = mod(vertCol / 100.0f, 1.0f); 
-	return vec4(tMod,tMod,tMod,1.0f);
+	//if (vertCol > 0)
+	//{
+		//vec4 tCol = vec4(texture(currentTextureColor,vec2(TexCoord.x, TexCoord.y)));
+		return vec4(TexColor.xyz, 0.5f);
+
+	//}
+	//else
+	//{
+	//	return vec4(1.0f,0.0f,0.0f,1.0f);
+	//}
 }
 
 void main()

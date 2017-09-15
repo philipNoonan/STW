@@ -9,7 +9,7 @@ GLFWwindow * kRender::loadGLFWWindow()
 
 	glfwInit();
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 5);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	//glfwWindowHint(GLFW_REFRESH_RATE, 30);
 	glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
@@ -125,9 +125,13 @@ void kRender::setVertPositions()
 	m_indices = indices;
 
 	std::vector<float>  verticiesPointcloud;
-	verticiesPointcloud.resize(m_depth_height * m_depth_width * 3);
-
+	verticiesPointcloud.resize(m_depth_height * m_depth_width * 4); // x,y,z, values for the projected 3D pointcloud
 	m_verticesPointcloud = verticiesPointcloud;
+
+	std::vector<float>  colorDepthMapping;
+	colorDepthMapping.resize(m_depth_height * m_depth_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
+	m_colorDepthMapping = colorDepthMapping;
+
 }
 
 
@@ -166,70 +170,81 @@ void kRender::setTextures()
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buf_Pointcloud);
 	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesPointcloud.size() * sizeof(float), &m_verticesPointcloud[0], GL_DYNAMIC_DRAW);
 
-	// bind buffer to VAO
+	glGenBuffers(1, &m_buf_color_depth_map);
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_depth_map);
+	glBufferData(GL_ARRAY_BUFFER, m_colorDepthMapping.size() * sizeof(float), &m_colorDepthMapping[0], GL_DYNAMIC_DRAW);
+
+	// bind buffers to VAO
+	int bindingLocation_buf_pointcloud = 2;
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); // 3 floats per vertex, no stride, no padding
-	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(bindingLocation_buf_pointcloud, 4, GL_FLOAT, GL_FALSE, 0, 0); // 4  floats per vertex, x,y,z and 1 for padding? this is annoying...
+	glEnableVertexAttribArray(bindingLocation_buf_pointcloud);
+
+	int bindingLocation_buf_color_depth_map = 1;
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_depth_map);
+	glVertexAttribPointer(bindingLocation_buf_color_depth_map, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(bindingLocation_buf_color_depth_map);
+
 	glBindVertexArray(0);
 
 
 
 
-	// Texture Depth Generate
-	glGenTextures(1, &m_textureDepth);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, m_textureDepth); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL); 
-	glBindTexture(GL_TEXTURE_2D, 0);
+// Texture Depth Generate
+glGenTextures(1, &m_textureDepth);
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, m_textureDepth); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
 
-	// Texture Infra Generate
-	glGenTextures(1, &m_textureInfra);
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_textureInfra); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL); 
-	glBindTexture(GL_TEXTURE_2D, 0);
+// Texture Infra Generate
+glGenTextures(1, &m_textureInfra);
+glActiveTexture(GL_TEXTURE1);
+glBindTexture(GL_TEXTURE_2D, m_textureInfra); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
 
-	// Texture Color Generate
-	glGenTextures(1, &m_textureColor);
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, m_textureColor); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glBindTexture(GL_TEXTURE_2D, 0);
+// Texture Color Generate
+glGenTextures(1, &m_textureColor);
+glActiveTexture(GL_TEXTURE2);
+glBindTexture(GL_TEXTURE_2D, m_textureColor); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
 
-	// Texture Flow Generate
-	glGenTextures(1, &m_textureFlow);
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, m_textureFlow); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, m_depth_width, m_depth_height, 0, GL_RG, GL_FLOAT, NULL);
-	glBindTexture(GL_TEXTURE_2D, 0);
+// Texture Flow Generate
+glGenTextures(1, &m_textureFlow);
+glActiveTexture(GL_TEXTURE3);
+glBindTexture(GL_TEXTURE_2D, m_textureFlow); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, m_depth_width, m_depth_height, 0, GL_RG, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
 
-	// Texture Vertex3D
-	glGenTextures(1, &m_textureVertex);
-	glBindTexture(GL_TEXTURE_2D, m_textureVertex); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
-	glBindImageTexture(4, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+// Texture Vertex3D
+glGenTextures(1, &m_textureVertex);
+glBindTexture(GL_TEXTURE_2D, m_textureVertex); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
+glBindImageTexture(4, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
-	// Texture Normal3D
-	glGenTextures(1, &m_textureNormal);
-	glBindTexture(GL_TEXTURE_2D, m_textureNormal); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
-	glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
-	glBindImageTexture(5, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+// Texture Normal3D
+glGenTextures(1, &m_textureNormal);
+glBindTexture(GL_TEXTURE_2D, m_textureNormal); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
+glBindImageTexture(5, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 
 }
@@ -256,6 +271,55 @@ void kRender::setComputeWindowPosition()
 	glViewport(m_anchorMW.first + m_depth_width * m_render_scale_width, m_anchorMW.second, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 }
 
+void kRender::setColorDepthMapping(int* colorDepthMap)
+{
+	// 2d array index is given by
+	// p.x = idx / size.x
+	// p.y = idx % size.x
+
+	//for m_colorDepthMapping[j + 1] = y color image axis, 1 at top
+	// m_colorDepthMapping[j] = x axis, 0 on the left, 
+
+	// MAP ME¬¬¬
+	int j = 0;
+	for (int i = 0; i < (m_depth_width * m_depth_height); i++, j+=2)
+	{
+		int yCoord = colorDepthMap[i] / m_color_width;
+		int xCoord = colorDepthMap[i] % m_color_width;
+		m_colorDepthMapping[j] = ((float)xCoord) / (float)m_color_width;
+		m_colorDepthMapping[j + 1] = (1080.0f - (float)yCoord) / (float)m_color_height;
+
+		//if (!(i % 1000))
+		//{
+		//	std::cout << " X: " << xCoord << ", Y: " << yCoord;
+		//}
+
+		//m_colorDepthMapping[j] = 0.5f;
+		//m_colorDepthMapping[j + 1] = 1.0f;
+
+
+		//if (m_colorDepthMapping[j] <= 0 || m_colorDepthMapping[j + 1] <= 0)
+		//{
+		//	std::cout << m_colorDepthMapping[j] << ", " << m_colorDepthMapping[j + 1] << " ";
+		//}
+
+	}
+
+
+
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_depth_map);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, m_colorDepthMapping.size() * sizeof(float), m_colorDepthMapping.data());
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	//// Other way to copy data to buffer, taken from https://learnopengl.com/#!Advanced-OpenGL/Advanced-Data
+	//glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_depth_map);
+	//void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+	//memcpy_s(ptr, m_colorDepthMapping.size() * sizeof(float), m_colorDepthMapping.data(), m_colorDepthMapping.size() * sizeof(float));
+	//glUnmapBuffer(GL_ARRAY_BUFFER);
+
+}
+
+
 
 void kRender::renderLiveVideoWindow(float* depthArray)
 {
@@ -264,6 +328,7 @@ void kRender::renderLiveVideoWindow(float* depthArray)
 	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(-0.3f, -0.f, -3.1f));
 
 	glm::mat4 model = glm::mat4(1.0f);
+	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
 
 	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
 	//glm::mat4 Projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f, -1.0f, 1000.0f);
@@ -301,7 +366,7 @@ void kRender::renderLiveVideoWindow(float* depthArray)
 void kRender::renderColorWindow(float* colorArray)
 {
 	// Camera matrix
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -3.0f));
+	glm::mat4 View = ColorView;
 
 	glm::mat4 model = glm::mat4(1.0f);
 
@@ -389,6 +454,7 @@ void kRender::renderPrevious()
 	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(-0.3f, -0.f, -3.1f));
 
 	glm::mat4 model = glm::mat4(1.0f);
+	//model = glm::rotate(model, 0.1f, glm::vec3(0, 1, 0));
 
 	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
 	//glm::mat4 Projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f, -1.0f, 1000.0f);
@@ -435,13 +501,13 @@ void kRender::renderPreviousColor()
 
 	glm::mat4 model = glm::mat4(1.0f);
 
-	glm::mat4 View2 = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -3.0f));
+	glm::mat4 View = ColorView;
 
 	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
 	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
 
 	//glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f);
-	glm::mat4 MVP = Projection * View2 * model;
+	glm::mat4 MVP = Projection * View * model;
 
 	glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f);
 	int w, h;
@@ -488,7 +554,8 @@ void kRender::drawPoints()
 	glBindImageTexture(2, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 	computeProg.use();
-	computeProg.setUniform("invK", invK);
+	//computeProg.setUniform("invK", invK);
+	glUniformMatrix4fv(m_invkID, 1, GL_FALSE, glm::value_ptr(invK));
 
 	int xWidth = divup(m_depth_width, 32);
 	int yWidth = divup(m_depth_height, 32);
@@ -503,7 +570,20 @@ void kRender::drawPoints()
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
 
+	glEnable(GL_POINT_SPRITE);
+	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
+
+	//// This works for grabbing the buffer from the compute3D shader and copying to host memory
+	//std::vector<float> PC;
+	//PC.resize(512 * 424 * 4);
+	//std::vector<float> NC;
+	//NC.resize(512 * 424 * 4);
+	//glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
+	//void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+	//memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
+	//glUnmapBuffer(GL_ARRAY_BUFFER);
+	//writePLYFloat(PC, NC, "./outPC.ply");
 
 
 
@@ -515,36 +595,49 @@ void kRender::drawPoints()
 	//);
 
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 200.1f));
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 200.0f));
 	glm::mat4 model = glm::mat4(1.0f);
-	model = glm::rotate(model, 0.0f, glm::vec3(0, 1, 0));
+	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
 
-	glm::mat4 Projection = glm::perspective(glm::radians(70.f), 1.0f, 0.1f, 1500.0f);
-	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1000.0f);
+	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 1500.0f);
+	glm::mat4 Projection = glm::ortho(-500.0f, 500.0f, -500.0f, 500.0f, -1.0f, 1500.0f);
 	glm::mat4 MVP = Projection * View * model;
 	glm::mat4 VP = Projection * View * model;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0,0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+
+	//glViewport((w / 2) - ((m_depth_width * m_render_scale_width) / 2), (h / 2) - ((m_depth_height * m_render_scale_height) / 2), m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	glViewport((w - (m_depth_width * m_render_scale_width)), 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+
+
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// bind the color texture for color sampling
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_textureColor);
+
+	/*glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, m_textureNormal);*/
+
+
 	renderProg.use();
 
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID);
+	// set subroutines
+	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID); // "fromVertex3D"
+	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID); // "fromPoints"
 
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID);
-
+	//set uniforms
 	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
 	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
-
 	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
 	glUniformMatrix4fv(m_ViewProjectionID, 1, GL_FALSE, glm::value_ptr(VP));
-
 	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
 	
-	glPointSize(2.0f);
+	// draw points
+	//glPointSize(2.0f);
 	glBindVertexArray(m_VAO_Pointcloud);
-	glDrawArrays(GL_POINTS, 0, 512*424*3);
+	glDrawArrays(GL_POINTS, 0, 512*424);
 	glBindVertexArray(0);
 
 
@@ -568,12 +661,15 @@ void kRender::drawLightModel()
 
 	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
 	glm::mat4 model = glm::mat4(1.0f);
-	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
+	//model = glm::rotate(model, -1.0f, glm::vec3(0, 1, 0));
+
+
+	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 4500.0f);
+	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
 	glm::mat4 MVP = Projection * View * model;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport((w / 2) - ((m_depth_width * m_render_scale_width) / 2), (h / 2) - ((m_depth_height * m_render_scale_height) / 2), m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	glViewport(0, 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	renderProg.use();
@@ -733,4 +829,57 @@ void kRender::cleanUp()
 	glfwTerminate();
 
 
+}
+
+
+
+
+
+
+void kRender::writePLYFloat(std::vector<float> PC, std::vector<float> NC, const char* FileName)
+{
+	std::ofstream outFile(FileName);
+
+	if (!outFile)
+	{
+		//cerr << "Error opening output file: " << FileName << "!" << endl;
+		printf("Error opening output file: %s!\n", FileName);
+		exit(1);
+	}
+
+	////
+	// Header
+	////
+	
+	const int pointNum = 512*424;
+	const int vertNum = 6;
+
+	outFile << "ply" << std::endl;
+	outFile << "format ascii 1.0" << std::endl;
+	outFile << "element vertex " << pointNum << std::endl;
+	outFile << "property float x" << std::endl;
+	outFile << "property float y" << std::endl;
+	outFile << "property float z" << std::endl;
+	if (vertNum == 6)
+	{
+		outFile << "property float nx" << std::endl;
+		outFile << "property float ny" << std::endl;
+		outFile << "property float nz" << std::endl;
+	}
+	outFile << "end_header" << std::endl;
+
+	////
+	// Points
+	////
+
+	for (int pi = 0; pi < m_verticesPointcloud.size()-2; pi+=4)
+	{
+
+		outFile << PC[pi] << " " << PC[pi+1] << " " << PC[pi+2] << " " << NC[pi] << " " << NC[pi+1] << " " << NC[pi+2] << std::endl;
+
+	}
+
+	outFile.close();
+
+	return;
 }

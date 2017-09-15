@@ -12,6 +12,8 @@
 //#include "shader.hpp"
 
 #include <iostream>
+#include <fstream>
+
 #include <vector>
 #include <list>
 #include <numeric>
@@ -109,6 +111,7 @@ class kRender
 		void setWindowLayout();
 		void setupComputeFBO();
 
+		void setColorDepthMapping(int* colorDepthMap);
 		void renderLiveVideoWindow(float* depthArray);
 		void renderColorWindow(float* colorArray);
 		void copyToPreviousFrame();
@@ -146,8 +149,9 @@ private:
 
 	GLuint m_VAO_Pointcloud;
 	GLuint m_buf_Pointcloud;
+	GLuint m_buf_color_depth_map;
 	std::vector<float> m_verticesPointcloud;
-
+	std::vector<float> m_colorDepthMapping;
 
 	GLuint m_programID;
 	GLuint m_ProjectionID;
@@ -200,6 +204,8 @@ private:
 
 	std::pair<int, int> m_gui_padding;
 
+	glm::mat4 ColorView = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -5.2f));
+
 
 
 	// GRAPH STUFF
@@ -229,6 +235,6 @@ private:
 
 	inline int divup(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 
-
+	void writePLYFloat(std::vector<float> PC, std::vector<float> NC, const char* FileName);
 
 };

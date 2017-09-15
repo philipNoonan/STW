@@ -58,7 +58,7 @@ public:
 
 	void frames(float * colorArray, float * bigDepthArray);
 
-	void frames(float * colorArray, float * depthArray, float * infraredArray, float * bigDepthArray);
+	void frames(float * colorArray, float * depthArray, float * infraredArray, float * bigDepthArray, int * colorDepthMapping);
 
 	//void frames(cv::Mat &color, cv::Mat &depth, cv::Mat &infra, float & fullColor);
 
@@ -102,6 +102,7 @@ private:
 	float* m_color_frame;
 	float* m_depth_frame;
 	float* m_infra_frame;
+	int * m_color_Depth_Map;
 
 	float *m_rawColor;
 	float *m_rawBigDepth;
@@ -113,6 +114,12 @@ private:
 	float m_depth_fy;
 	float m_depth_ppx;
 	float m_depth_ppy;
+
+	float m_depth_k1;
+	float m_depth_k2;
+	float m_depth_k3;
+	float m_depth_p1;
+	float m_depth_p2;
 
 	Status m_status;
 	bool m_frames_ready;

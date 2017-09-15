@@ -64,6 +64,20 @@ int main(int, char**)
 	float midDepth1 = 0.0f;
 	float midDepth2 = 0.0f;
 	float midDepth3 = 0.0f;
+	OCVStuff.setupAruco();
+
+	cv::Mat irCamPams = cv::Mat::eye(3, 3, CV_32F);
+	cv::Mat irCamDist = cv::Mat(5, 1, CV_32F);
+
+	irCamPams.at<float>(0, 0) = kcamera.fx();
+	irCamPams.at<float>(1, 1) = kcamera.fy();
+	irCamPams.at<float>(0, 2) = 512.0f - kcamera.ppx();
+	irCamPams.at<float>(1, 2) = 424.0f - kcamera.ppy();
+
+	//irCamDist.at<float>(0, 0) = kcamera.k1();
+	//irCamDist.at<float>(1, 0) = kcamera.k2();
+	//irCamDist.at<float>(2, 0) = kcamera.p1(); // k3 not used in aruco
+	//irCamDist.at<float>(3, 0) = kcamera.p2();
 
 	// Main loop
 	while (!glfwWindowShouldClose(window))
@@ -88,7 +102,68 @@ int main(int, char**)
 
 		if (kcamera.ready())
 		{
-			kcamera.frames(colorArray, depthArray, infraredArray, NULL);
+			kcamera.frames(colorArray, depthArray, infraredArray, NULL, colorDepthMap);
+
+			cv::Mat newColor = cv::Mat(1080, 1920, CV_8UC4, colorArray);
+
+
+			cv::imshow("irr", 0.00001f * cv::Mat(424,512, CV_32FC1, infraredArray));
+
+			OCVStuff.detectMarkersColor(newColor);
+
+
+
+			//cv::imshow("bd", cv::Mat(1082, 1920, CV_32FC1, bigDepthArray) / 1000.0f);
+
+			////// This checks if the mapping is copying out correctly
+			//cv::Mat newColor = cv::Mat(1080, 1920, CV_32FC1, colorArray);
+			//cv::Mat depCol = cv::Mat(424, 512, CV_32FC1);
+			//int ind = 0;
+			//for (int i = 0; i < 424; i++)
+			//{
+			//	for (int j = 0; j < 512; j++)
+			//	{
+			//		int y = colorDepthMap[ind] / 1920;
+			//		int x = colorDepthMap[ind] % 1920;
+			//		//int index = colorDepthMap[ind];
+			//		ind++;
+			//		//if (index > 0)
+			//		//{
+			//			depCol.at<float>(i, j) = newColor.at<float>(y, x);
+			//			//std::cout << index << " ";
+
+			//		//}
+			//	}
+			//}
+			//cv::imshow("regi", cv::Mat(424, 512, CV_8UC4, depCol.data));
+
+
+			//// This checks if the mapping is copying out correctly
+			//cv::Mat depCol = cv::Mat(424, 512, CV_32FC1);
+			//int ind = 0;
+			//for (int i = 0; i < 424; i++)
+			//{
+			//	for (int j = 0; j < 512; j++)
+			//	{
+			//		//int u = colorDepthMap[ind] / 1080;
+			//		//int v = colorDepthMap[ind] % 1080;
+			//		int index = colorDepthMap[ind];
+			//		ind++;
+			//		//if (index > 0)
+			//		//{
+			//			depCol.at<float>(i, j) = colorArray[index];
+			//			//std::cout << index << " ";
+
+			//		//}
+			//	}
+			//}
+			//cv::imshow("regi", cv::Mat(424, 512, CV_8UC4, depCol.data));
+
+
+			//for (int i = 0; i < 512 * 424; i += 100)
+			//{
+			//	std::cout << colorDepthMap[i] << ", ";
+			//}
 
 			/*midDepth1 = *(depthArray + ((512 * 256) + 212));
 			midDepth2 = *(depthArray + ((512 * 256) + 212));
@@ -102,7 +177,7 @@ int main(int, char**)
 			//cv::waitKey(1);
 
 			//krender.drawTriangle();
-
+			krender.setColorDepthMapping(colorDepthMap);
 			cv::Mat temp = cv::Mat(424, 512, CV_32FC1, infraredArray);
 			cv::Mat grey1;
 			temp.convertTo(grey1, CV_8UC1, 255.0 / 100000.0);
@@ -222,12 +297,14 @@ int main(int, char**)
 			{
 				krender.renderLiveVideoWindow(depthArray);
 				krender.renderColorWindow(colorArray);
+				krender.setColorDepthMapping(colorDepthMap);
 				krender.drawPoints();
 			}
 			else 
 			{
 				krender.renderPrevious();
 				krender.renderPreviousColor();
+				krender.setColorDepthMapping(colorDepthMap);
 				krender.drawPoints();
 
 

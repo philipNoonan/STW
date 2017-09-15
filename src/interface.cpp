@@ -45,7 +45,7 @@ void Freenect2Camera::frames(float * colorAray, float * bigDepthArray)
 }
 
 // get all the frames available, pass a null pointer in for each array you dont want back
-void Freenect2Camera::frames(float * colorArray, float * depthArray, float * infraredArray, float * bigDepthArray)
+void Freenect2Camera::frames(float * colorArray, float * depthArray, float * infraredArray, float * bigDepthArray, int * colorDepthMapping)
 {
 	//m_mtx.lock();
 
@@ -69,6 +69,10 @@ void Freenect2Camera::frames(float * colorArray, float * depthArray, float * inf
 		if (bigDepthArray != NULL)
 		{
 			memcpy_s(bigDepthArray, 1920 * 1082 * 4, m_rawBigDepth, 1920 * 1082 * 4);
+		}
+		if (colorDepthMapping != NULL)
+		{
+			memcpy_s(colorDepthMapping, 512 * 424 * 4, m_color_Depth_Map, 512 * 424 * 4);
 		}
 
 
@@ -180,6 +184,7 @@ void Freenect2Camera::captureLoop()
 	m_color_frame = new float[m_frame_width * m_frame_height];
 	m_depth_frame = new float[m_frame_width * m_frame_height];
 	m_infra_frame = new float[m_frame_width * m_frame_height];
+	m_color_Depth_Map = new int[m_frame_width * m_frame_height];
 
 
 	//cv::Size2i frame_size(m_frame_width, m_frame_height);
@@ -223,6 +228,12 @@ void Freenect2Camera::captureLoop()
 	m_depth_ppx = dev->getIrCameraParams().cx;
 	m_depth_ppy = dev->getIrCameraParams().cy;
 
+	m_depth_k1;
+	m_depth_k2;
+	m_depth_k3;
+	m_depth_p1;
+	m_depth_p2;
+
 	m_colorCamPams = dev->getColorCameraParams();
 
 	libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
@@ -264,6 +275,7 @@ void Freenect2Camera::captureLoop()
 		memcpy_s(m_color_frame, m_frame_width * m_frame_height * 4, registered.data, m_frame_width * m_frame_height * 4);
 		memcpy_s(m_depth_frame, m_frame_width * m_frame_height * 4, undistorted.data, m_frame_width * m_frame_height * 4);
 		memcpy_s(m_infra_frame, m_frame_width * m_frame_height * 4, ir->data, m_frame_width * m_frame_height * 4);
+		memcpy_s(m_color_Depth_Map, m_frame_width * m_frame_height * 4, colorDepthIndex, m_frame_width * m_frame_height * 4);
 
 		//m_mtx.unlock();
 
@@ -287,5 +299,6 @@ void Freenect2Camera::captureLoop()
 	delete m_depth_frame;
 	delete m_infra_frame;
 
+	delete m_color_Depth_Map;
 
 }
