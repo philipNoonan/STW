@@ -28,6 +28,7 @@ class kRender
 	public:
 		kRender()
 			: m_window()
+			, m_show_imgui(true)
 			, m_screen_height(1080)
 			, m_screen_width(1920)
 			, m_depth_height(424)
@@ -55,6 +56,13 @@ class kRender
 		GLFWwindow * window()
 		{
 			return m_window;
+		}
+		
+		void SetCallbackFunctions();
+
+		bool showImgui()
+		{
+			return m_show_imgui;
 		}
 
 		float renderScaleHeight()
@@ -85,6 +93,12 @@ class kRender
 			return std::make_pair<int, int> (m_gui_padding.first * m_render_scale_width, m_gui_padding.second * m_render_scale_height);
 		}
 
+		std::vector<float> getDepthPoints()
+		{
+			return m_depthPointsFromBuffer;
+		}
+
+		void getMouseClickPositionsDepth();
 
 		void anchorMW(std::pair<int, int> anchor)
 		{
@@ -128,6 +142,11 @@ class kRender
 			m_cameraParams = camPams;
 		}
 
+		std::vector<std::pair<int, int>> getDepthPoints2D()
+		{
+			return m_depthPixelPoints2D;
+		}
+		void labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap);
 
 		//void setGraphPoints(int size, float valueX, float valueY, float valueZ);
 		//void updateGraphPoints(float valueX, float valueY, float valueZ);
@@ -141,6 +160,7 @@ private:
 	GLSLProgram v2nProg;
 
 	GLFWwindow * m_window;
+	bool m_show_imgui;
 
 	GLuint m_VBO, m_VAO, m_EBO;
 	std::vector<float> m_vertices;
@@ -206,21 +226,6 @@ private:
 
 	glm::mat4 ColorView = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -5.2f));
 
-
-
-	// GRAPH STUFF
-	//std::list<float> m_graph_points_x;
-	//std::list<float> m_graph_points_y;
-	//std::list<float> m_graph_points_z;
-
-	//std::list<float> m_graph_points_long_x;
-	//std::list<float> m_graph_points_long_y;
-	//std::list<float> m_graph_points_long_z;
-
-	//std::vector<float> m_graph_vector_x;
-	//std::vector<float> m_graph_vector_y;
-	//std::vector<float> m_graph_vector_z;
-
 	glm::vec4 m_cameraParams;
 
 	// k.x = fx, k.y = fy, k.z = cx, k.y = cy, skew = 1
@@ -236,5 +241,41 @@ private:
 	inline int divup(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 
 	void writePLYFloat(std::vector<float> PC, std::vector<float> NC, const char* FileName);
+
+
+
+
+
+
+	float m_mouse_pos_x;
+	float m_mouse_pos_y;
+
+	// this static wrapped clas was taken from BIC comment on https://stackoverflow.com/questions/7676971/pointing-to-a-function-that-is-a-class-member-glfw-setkeycallback
+	void MousePositionCallback(GLFWwindow* window, double positionX, double positionY);
+	void KeyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+	void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+
+	class GLFWCallbackWrapper
+	{
+	public:
+		GLFWCallbackWrapper() = delete;
+		GLFWCallbackWrapper(const GLFWCallbackWrapper&) = delete;
+		GLFWCallbackWrapper(GLFWCallbackWrapper&&) = delete;
+		~GLFWCallbackWrapper() = delete;
+
+		static void MousePositionCallback(GLFWwindow* window, double positionX, double positionY);
+		static void MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+		static void KeyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+		static void SetApplication(kRender *application);
+	private:
+		static kRender* s_application;
+	};
+
+	std::vector<float> m_depthPointsFromBuffer;
+	std::vector<std::pair<int, int>> m_depthPixelPoints2D;
+
+
+
+
 
 };

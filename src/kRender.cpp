@@ -4,6 +4,97 @@ kRender::~kRender()
 {
 }
 
+void kRender::GLFWCallbackWrapper::MousePositionCallback(GLFWwindow* window, double positionX, double positionY)
+{
+	s_application->MousePositionCallback(window, positionX, positionY);
+}
+
+void kRender::GLFWCallbackWrapper::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+	s_application->MouseButtonCallback(window, button, action, mods);
+}
+
+
+void kRender::GLFWCallbackWrapper::KeyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	s_application->KeyboardCallback(window, key, scancode, action, mods);
+}
+
+void kRender::GLFWCallbackWrapper::SetApplication(kRender* application)
+{
+	GLFWCallbackWrapper::s_application = application;
+}
+
+kRender* kRender::GLFWCallbackWrapper::s_application = nullptr;
+
+void kRender::MousePositionCallback(GLFWwindow* window, double positionX, double positionY)
+{
+	//...
+	//std::cout << "mouser" << std::endl;
+	m_mouse_pos_x = positionX;
+	m_mouse_pos_y = positionY;
+}
+void kRender::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
+{
+	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
+	{
+		// m_depthPixelPoints2D.push_back(std::make_pair(m_mouse_pos_x, m_mouse_pos_y));
+		// get correct current offset and scakle for the window
+		int depth_pos_x = m_mouse_pos_x / m_render_scale_width;
+		int depth_pos_y = m_mouse_pos_y / m_render_scale_height;
+
+		if (depth_pos_x < m_depth_width && depth_pos_y < m_depth_height)
+		{
+			m_depthPixelPoints2D.push_back(std::make_pair(depth_pos_x, depth_pos_y));
+			m_depthPointsFromBuffer.resize(m_depthPixelPoints2D.size() * 4); // for 4 floats per vertex (x,y,z, + padding)
+
+
+		}
+	}
+	if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
+	{
+		if (m_depthPixelPoints2D.size() > 0)
+		{
+			m_depthPixelPoints2D.pop_back();
+			m_depthPointsFromBuffer.resize(m_depthPixelPoints2D.size() * 4); // for 4 floats per vertex (x,y,z, + padding)
+
+		}
+		// pop_back entry on vector
+	}
+	
+	if (m_depthPixelPoints2D.size() > 0 && action == GLFW_PRESS)
+	{
+		std::cout << m_depthPixelPoints2D.size();
+		for (auto i : m_depthPixelPoints2D)
+		{
+			std::cout << " x: " << i.first << " y: " << i.second << std::endl;
+		}
+	}
+	else if (m_depthPixelPoints2D.size() == 0 && action == GLFW_PRESS)
+	{
+		std::cout << "no entries yet, left click points on depth image" << std::endl;
+	}
+	//std::cout << "mouse button pressed: " << button << " " << action << " x: " <<  m_mouse_pos_x << " y: " << m_mouse_pos_y << std::endl;
+
+}
+
+void kRender::KeyboardCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+	//...
+	//std::cout << "keyer" << std::endl;
+	if (key == GLFW_KEY_H && action == GLFW_PRESS)
+		m_show_imgui = !m_show_imgui;
+
+}
+
+void kRender::SetCallbackFunctions()
+{
+	GLFWCallbackWrapper::SetApplication(this);
+	glfwSetCursorPosCallback(m_window, GLFWCallbackWrapper::MousePositionCallback);
+	glfwSetKeyCallback(m_window, GLFWCallbackWrapper::KeyboardCallback);
+	glfwSetMouseButtonCallback(m_window, GLFWCallbackWrapper::MouseButtonCallback);
+}
+
 GLFWwindow * kRender::loadGLFWWindow()
 {
 
@@ -41,6 +132,45 @@ void kRender::requestShaderInfo()
 {
 	renderProg.printActiveUniforms();
 }
+
+void kRender::getMouseClickPositionsDepth()
+{
+	// vector of 2d depth pos from 2d pixel location of depth or IR image
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 void kRender::compileAndLinkShader()
@@ -319,25 +449,28 @@ void kRender::setColorDepthMapping(int* colorDepthMap)
 
 }
 
+void kRender::labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap)
+{
 
+}
 
 void kRender::renderLiveVideoWindow(float* depthArray)
 {
 	//glm::mat4 projection = glm::ortho(0.0f, 512.0f, 0.0f, 424.0f);
 	// Camera matrix
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(-0.3f, -0.f, -3.1f));
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.f, -0.1f));
 
 	glm::mat4 model = glm::mat4(1.0f);
 	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
 
-	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	//glm::mat4 Projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f, -1.0f, 1000.0f);
+	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1500.0f);
 
 	glm::mat4 MVP = Projection * View * model;
 
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(m_anchorMW.first, m_anchorMW.second, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	renderProg.use();
@@ -456,8 +589,8 @@ void kRender::renderPrevious()
 	glm::mat4 model = glm::mat4(1.0f);
 	//model = glm::rotate(model, 0.1f, glm::vec3(0, 1, 0));
 
-	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	//glm::mat4 Projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f, -1.0f, 1000.0f);
+	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
+	glm::mat4 Projection = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -1.0f, 1000.0f);
 
 	glm::mat4 MVP = Projection * View * model;
 	int w, h;
@@ -574,15 +707,53 @@ void kRender::drawPoints()
 	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
 
-	//// This works for grabbing the buffer from the compute3D shader and copying to host memory
-	//std::vector<float> PC;
-	//PC.resize(512 * 424 * 4);
-	//std::vector<float> NC;
-	//NC.resize(512 * 424 * 4);
-	//glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
-	//void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
-	//memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
-	//glUnmapBuffer(GL_ARRAY_BUFFER);
+	////// This works for grabbing the buffer from the compute3D shader and copying to host memory
+	std::vector<float> PC;
+	PC.resize(512 * 424 * 4);
+	////std::vector<float> NC;
+	////NC.resize(512 * 424 * 4);
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
+	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+	memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
+	//// int oneDindex = (row * length_of_row) + column; // Indexes
+	glUnmapBuffer(GL_ARRAY_BUFFER);
+	
+	int ind = 0;
+	int numBadPixel = 0;
+	if (m_depthPixelPoints2D.size() > 0)
+	{
+		for (auto i : m_depthPixelPoints2D)
+		{
+			int index1D = ((m_depth_width * i.second) + i.first);
+			memcpy_s(&m_depthPointsFromBuffer[ind], 4 * sizeof(float), &PC[index1D * 4], 4 * sizeof(float));
+			m_depthPointsFromBuffer[ind + 3] = index1D;
+			if (m_depthPointsFromBuffer[ind] == 0)
+			{
+				//invalid depth point, pop back one of the mouse clicks
+				numBadPixel++;
+				std::cout << "invalid depth point, pop back one of the mouse clicks " << std::endl;
+			}
+			else
+			{
+				ind += 4;
+			}
+		}
+
+		for (int j = 0; j < numBadPixel; j++)
+		{
+			m_depthPixelPoints2D.pop_back();
+		}
+	}
+	//memcpy_s(&m_depthPointsFromBuffer[0], 4 * sizeof(float), &PC[((424 * 100) + 120 ) * 4], 4 * sizeof(float));
+	//memcpy_s(&m_depthPointsFromBuffer[4], 4 * sizeof(float), &PC[((424 * 120) + 200 ) * 4], 4 * sizeof(float));
+	//memcpy_s(&m_depthPointsFromBuffer[8], 4 * sizeof(float), &PC[((424 * 180 ) + 280) * 4], 4 * sizeof(float));
+	//memcpy_s(&m_depthPointsFromBuffer[12], 4 * sizeof(float), &PC[((424 * 140 ) + 340) * 4], 4 * sizeof(float));
+
+
+
+
+
+	
 	//writePLYFloat(PC, NC, "./outPC.ply");
 
 
@@ -595,19 +766,22 @@ void kRender::drawPoints()
 	//);
 
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 200.0f));
+	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
 	glm::mat4 model = glm::mat4(1.0f);
 	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
 
-	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 1500.0f);
-	glm::mat4 Projection = glm::ortho(-500.0f, 500.0f, -500.0f, 500.0f, -1.0f, 1500.0f);
+	glm::mat4 Projection = glm::perspective(512.0f/424.0f, 1.0f, 0.1f, 2500.0f);
+	//glm::mat4 Projection = glm::ortho(-1000.0f, 1000.0f, -1000.0f, 1000.0f, -1.0f, 2500.0f);
 	glm::mat4 MVP = Projection * View * model;
 	glm::mat4 VP = Projection * View * model;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
 
 	//glViewport((w / 2) - ((m_depth_width * m_render_scale_width) / 2), (h / 2) - ((m_depth_height * m_render_scale_height) / 2), m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-	glViewport((w - (m_depth_width * m_render_scale_width)), 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	// bottom right
+	//glViewport((w - (m_depth_width * m_render_scale_width)), 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	//top left
+	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 
 
@@ -669,7 +843,7 @@ void kRender::drawLightModel()
 	glm::mat4 MVP = Projection * View * model;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	renderProg.use();

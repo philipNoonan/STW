@@ -13,6 +13,7 @@ static void error_callback(int error, const char* description)
 
 void kRenderInit()
 {
+	krender.SetCallbackFunctions();
 	krender.compileAndLinkShader();
 	// Set locations
 	krender.setLocations();
@@ -24,12 +25,12 @@ void kRenderInit()
 
 
 
-
 int main(int, char**)
 {
 	int display_w, display_h;
 	// load openGL window
 	window = krender.loadGLFWWindow();
+
 	glfwGetFramebufferSize(window, &display_w, &display_h);
 	// Setup ImGui binding
 	ImGui_ImplGlfwGL3_Init(window, true);
@@ -98,18 +99,24 @@ int main(int, char**)
 
 		//krender.requestShaderInfo();
 
-		krender.setCameraParams(glm::vec4(kcamera.fx(), kcamera.fx(), kcamera.ppx(), kcamera.ppy()));
+		krender.setCameraParams(glm::vec4(kcamera.fx() + 10.0f, kcamera.fx() - 10.0f, kcamera.ppx(), kcamera.ppy()+ 10.0f)); // FIX ME
 
 		if (kcamera.ready())
 		{
 			kcamera.frames(colorArray, depthArray, infraredArray, NULL, colorDepthMap);
 
-			cv::Mat newColor = cv::Mat(1080, 1920, CV_8UC4, colorArray);
+			newColor = cv::Mat(1080, 1920, CV_8UC4, colorArray);
 
 
-			cv::imshow("irr", 0.00001f * cv::Mat(424,512, CV_32FC1, infraredArray));
+
+
+
+
+
 
 			OCVStuff.detectMarkersColor(newColor);
+
+			//OCVStuff.getDepthToColorMatrix();
 
 
 
@@ -201,6 +208,9 @@ int main(int, char**)
 			glfwPollEvents();
 			ImGui_ImplGlfwGL3_NewFrame();
 
+
+
+
 			// 1. Show a simple window
 			// Tip: if we don't call ImGui::Begin()/ImGui::End() the widgets appears in a window automatically called "Debug"
 //			{
@@ -285,11 +295,32 @@ int main(int, char**)
 
 			//}
 			////// 3. Show the ImGui test window. Most of the sample code is in ImGui::ShowTestWindow()
-			//if (show_test_window)
+			if (krender.showImgui())
 			{
-				ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
-				ImGui::ShowTestWindow(&show_test_window);
+				//ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
+				//ImGui::ShowTestWindow(&show_test_window);
+				ImGui::SetNextWindowSize(ImVec2((display_w / 4) - (2 * krender.guiPadding().first), (display_h / 2) - (1.5 * krender.guiPadding().second)), ImGuiSetCond_Always);
+				ImGuiWindowFlags window_flags = 0;
+				window_flags |= ImGuiWindowFlags_NoTitleBar;
+				window_flags |= ImGuiWindowFlags_ShowBorders;
+				window_flags |= ImGuiWindowFlags_NoResize;
+				window_flags |= ImGuiWindowFlags_NoMove;
+				window_flags |= ImGuiWindowFlags_NoCollapse;
+
+				ImGui::Begin("Slider Graph", &show_slider_graph, window_flags);
+				ImGui::PushItemWidth(-krender.guiPadding().first);
+				ImGui::SetWindowPos(ImVec2(display_w - (display_w / 4) - (2 * krender.guiPadding().first) - krender.guiPadding().first, ((krender.guiPadding().second * 0.5f) + (0))   ));
+				ImGui::Text("Help menu - press 'H' to hide");
+				if (ImGui::Button("Select color points")) select_color_points_mode ^= 1; ImGui::SameLine();
+				if (ImGui::Button("Reset")) OCVStuff.resetColorPoints();
+
+				if (ImGui::Button("Select depth points")) select_depth_points_mode ^= 1; ImGui::SameLine();
+				if (ImGui::Button("Reset")) OCVStuff.resetDepthPoints();
+
+				ImGui::End();
+
 			}
+
 
 
 			
@@ -308,6 +339,133 @@ int main(int, char**)
 				krender.drawPoints();
 
 
+			}
+
+			if (select_color_points_mode && newFrame == true)
+			{
+				//krender.getMouseClickPositionsColor();
+				//krender.drawMouseClickPositionsColor();
+
+				cv::Mat newColor = cv::Mat(1080, 1920, CV_32FC1, colorArray);
+				cv::Mat depCol = cv::Mat(424, 512, CV_32FC1);
+				int ind = 0;
+				for (int i = 0; i < 424; i++)
+				{
+					for (int j = 0; j < 512; j++)
+					{
+						int y = colorDepthMap[ind] / 1920;
+						int x = colorDepthMap[ind] % 1920;
+						//int index = colorDepthMap[ind];
+						ind++;
+						//if (index > 0)
+						//{
+						depCol.at<float>(i, j) = newColor.at<float>(y, x);
+						//std::cout << index << " ";
+
+						//}
+					}
+				}
+
+
+
+
+				cv::Mat outImg = cv::Mat(424, 512, CV_8UC4, depCol.data);
+				cv::circle(outImg, cv::Point2f(200.0f, 100.0f), 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
+				cv::circle(outImg, cv::Point2f(272.0f, 120.0f), 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
+				cv::circle(outImg, cv::Point2f(386.0f, 140.0f), 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
+
+				cv::imshow("regi", outImg);
+
+				depthPoints.resize(4);
+				colorPoints.resize(4);
+
+				//depthPoints[0] = cv::Point2f(120.0f, 80.0f);
+				//depthPoints[0] = cv::Point2f(120.0f, 80.0f);
+
+			}
+
+			if (select_depth_points_mode  && newFrame == true)
+			{
+				std::vector<float> depthPointsFromBuffer = krender.getDepthPoints();
+				int numPoints = depthPointsFromBuffer.size() / 4;
+				if (numPoints > 0)
+				{
+
+
+					//krender.getMouseClickPositionsDepth();
+
+
+
+
+
+
+					depthPoints.resize(numPoints);
+					colorPoints.resize(numPoints);
+					cv::Mat tDepth = cv::Mat(424, 512, CV_32SC1, colorDepthMap);
+
+
+					int ind = 0;
+					for (int j = 0; j < numPoints; j++)
+					{
+						depthPoints[j].x = depthPointsFromBuffer[ind] / 1000.0f;
+						depthPoints[j].y = depthPointsFromBuffer[ind + 1] / 1000.0f;
+						depthPoints[j].z = depthPointsFromBuffer[ind + 2] / 1000.0f;
+
+						int index = depthPointsFromBuffer[ind + 3];
+
+						int xPixDepth = index % 512;
+						int yPixDepth = index / 512;
+						cv::circle(tDepth, cv::Point2f(xPixDepth, yPixDepth), 10, cv::Scalar(0.0f, 0.0f, 0.0f, 255.0f), 5);
+
+
+						int colIndex = colorDepthMap[index];
+
+						int xColor = colIndex % 1920;
+						int yColor = colIndex / 1920;
+
+						colorPoints[j] = cv::Point2f(xColor, yColor);
+
+						std::cout << "xCol: " << xColor << " yCol: " << yColor <<std::endl;
+						std::cout << "xDep: " << xPixDepth << " yDep: " << yPixDepth << std::endl;
+
+
+
+						ind += 4;
+
+					}
+
+					//std::cout << "dep: " << depthPoints << std::endl;
+					//std::cout << "col: " << colorPoints << std::endl;
+
+					if (numPoints >= 4)
+					{
+						cv::Mat registration;
+						registration = OCVStuff.getDepthToColorMatrix(depthPoints, colorPoints);
+
+
+
+						std::cout << "reg: " << registration << std::endl;
+					}
+
+
+
+					for (int k = 0; k < numPoints; k++)
+					{
+						cv::circle(newColor, colorPoints[k], 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
+
+					}
+					cv::Mat pDown;
+					cv::pyrDown(newColor, pDown);
+
+					cv::imshow("with circles", pDown);
+					cv::imshow("irr", 0.1 * cv::Mat(424, 512, CV_32SC1, colorDepthMap));
+
+					
+
+					//krender.labelDepthPointsOnColorImage(depthArray, colorDepthMap);
+					//krender.getMouseClickPositionsDepth();
+					//krender.drawMouseClickPositionsDepth();
+				}
 			}
 
 			krender.drawLightModel();

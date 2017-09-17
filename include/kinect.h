@@ -48,3 +48,11 @@ float bigDepthArray[colorWidth * (colorHeight + 2)]; // 1082 is not a typo
 float depthArray[depthWidth * depthHeight];
 float infraredArray[depthWidth * depthHeight];
 int colorDepthMap[depthWidth * depthHeight];
+
+// depth color points picking
+bool select_color_points_mode = false;
+bool select_depth_points_mode = false;
+
+std::vector<cv::Point3f> depthPoints;
+std::vector<cv::Point2f> colorPoints;
+cv::Mat newColor;

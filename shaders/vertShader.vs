@@ -43,7 +43,7 @@ void main()
 {
 	gl_Position = getPositionSelection();
 	//gl_PointSize = -position4D.z / 500.0f;
-	gl_PointSize = 1.0f;
+	gl_PointSize = 2.0f;
 	// We swap the y-axis by substracing our coordinates from 1. This is done because most images have the top y-axis inversed with OpenGL's top y-axis.
 	//TexCoord = texCoord;
 	TexCoord = vec2(texCoord.x, 1 - texCoord.y);

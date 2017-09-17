@@ -29,6 +29,49 @@ public:
 
 
 	}
+
+	void resetColorPoints()
+	{
+	
+	}
+
+	void resetDepthPoints()
+	{
+
+	}
+
+	// 
+	cv::Mat getDepthToColorMatrix(std::vector<cv::Point3f> depthPoints, std::vector<cv::Point2f> colorPoints)
+	{
+		cv::Mat depthToColorMatrix = cv::Mat::eye(4,4,CV_32F);
+
+
+		// Camera internals
+		cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<float>::type); // Assuming no lens distortion
+
+		//cout << "Camera Matrix " << endl << camera_matrix << endl;
+		// Output rotation and translation
+		cv::Mat rotation_vector; // Rotation in axis-angle form
+		cv::Mat translation_vector;
+
+		// Solve for pose
+		cv::solvePnP(depthPoints, colorPoints, colorCamPams, dist_coeffs, rotation_vector, translation_vector);
+
+		cv::Mat rod;
+		cv::Rodrigues(rotation_vector, rod);
+
+		//std::cout << rod << std::endl;
+
+		cv::Mat tmp = depthToColorMatrix(cv::Rect(0, 0, 3, 3));
+		rod.copyTo(tmp);
+
+		depthToColorMatrix.at<float>(0, 3) = translation_vector.at<float>(0);
+		depthToColorMatrix.at<float>(1, 3) = translation_vector.at<float>(1);
+		depthToColorMatrix.at<float>(2, 3) = translation_vector.at<float>(2);
+
+		return depthToColorMatrix;
+	}
+
 	void detectMarkersInfra(cv::Mat inputImage)
 	{
 		cv::Mat greyColor;

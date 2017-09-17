@@ -24,7 +24,7 @@ subroutine(getColor)
 vec4 fromDepth()
 {
 	vec4 redChnl = texture(currentTextureDepth, TexCoord);
-	return vec4(redChnl.x/1000.0f, redChnl.x / 1000.0f, redChnl.x / 1000.0f, 1.0f);
+	return vec4(redChnl.x/5000.0f, redChnl.x / 5000.0f, redChnl.x / 5000.0f, 1.0f);
 }
 
 subroutine(getColor)
@@ -61,7 +61,7 @@ vec4 fromVertex()
 		float dir = max(dot(tNormal.xyz, diff), 0.0f);
 
 		vec3 col = clamp(vec3(dir, dir, dir) + ambient, 0.0f, 1.0f);
-		return vec4(col, 1.0f);
+		return vec4(col, 0.1f);
 	}
 
 }
@@ -73,7 +73,7 @@ vec4 fromPoints()
 	//if (vertCol > 0)
 	//{
 		//vec4 tCol = vec4(texture(currentTextureColor,vec2(TexCoord.x, TexCoord.y)));
-		return vec4(TexColor.xyz, 0.5f);
+		return vec4(TexColor.xyz, 0.1f);
 
 	//}
 	//else

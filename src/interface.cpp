@@ -236,6 +236,8 @@ void Freenect2Camera::captureLoop()
 
 	m_colorCamPams = dev->getColorCameraParams();
 
+	
+
 	libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
 	libfreenect2::Frame undistorted(m_frame_width, m_frame_height, 4), registered(m_frame_width, m_frame_height, 4), bigDepth(1920, 1082, 4);
 	int colorDepthIndex[512 * 424];
