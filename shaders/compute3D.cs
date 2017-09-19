@@ -34,7 +34,7 @@ void main()
         //{
             vec3 tPos = depth.x * rotate(invK, vec3(pix.x, pix.y, 1.0f));
             imageStore(OutputImage, ivec2(pix.x, pix.y), vec4(tPos.xyz, 0.0f));
-            Position3D[(pix.y * size.x) + pix.x] = vec4(tPos.x, -tPos.y, -tPos.z, 2.0f);
+            Position3D[(pix.y * size.x) + pix.x] = vec4(tPos.x, tPos.y, tPos.z, 2.0f);
             //Position3D[(pix.x * size.x) + pix.y] = vec3(pix.x / 100.0f, pix.y / 100.0f, -depth / 100.0f);
 
         //}

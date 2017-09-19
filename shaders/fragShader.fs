@@ -8,6 +8,7 @@ layout(location = 0) out vec4 color;
 uniform mat4 model;
 uniform vec3 ambient;
 uniform vec3 light;
+uniform float irBrightness = 1.0f;
 
 // Texture samplers
 layout (binding=0) uniform sampler2D currentTextureDepth;
@@ -44,6 +45,15 @@ vec4 fromFlow()
 }
 
 subroutine(getColor)
+vec4 fromInfra()
+{
+	vec4 redChnl = texture(currentTextureInfra, TexCoord);
+	//float tMod = mod(redChnl.x / 10000.0f, 1.0f); 
+
+	return vec4(redChnl.x / irBrightness / 10.0f, redChnl.x / irBrightness / 10.0f, redChnl.x / irBrightness / 10.0f, 1.0f);
+}
+
+subroutine(getColor)
 vec4 fromVertex()
 {
 
@@ -61,7 +71,9 @@ vec4 fromVertex()
 		float dir = max(dot(tNormal.xyz, diff), 0.0f);
 
 		vec3 col = clamp(vec3(dir, dir, dir) + ambient, 0.0f, 1.0f);
-		return vec4(col, 0.1f);
+
+		return vec4(col, 1.0f);
+
 	}
 
 }
@@ -73,13 +85,21 @@ vec4 fromPoints()
 	//if (vertCol > 0)
 	//{
 		//vec4 tCol = vec4(texture(currentTextureColor,vec2(TexCoord.x, TexCoord.y)));
-		return vec4(TexColor.xyz, 0.1f);
+		return vec4(TexColor.xyz, 1.0f);
+		//		return vec4(1.0f, 0.0f,  0.0f, 1.0f);
+
 
 	//}
 	//else
 	//{
 	//	return vec4(1.0f,0.0f,0.0f,1.0f);
 	//}
+}
+
+subroutine(getColor)
+vec4 fromCalibration()
+{
+	return vec4(1.0f, 0.0f, 0.0f, 1.0f);
 }
 
 void main()

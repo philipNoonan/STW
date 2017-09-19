@@ -84,7 +84,20 @@ void kRender::KeyboardCallback(GLFWwindow* window, int key, int scancode, int ac
 	//std::cout << "keyer" << std::endl;
 	if (key == GLFW_KEY_H && action == GLFW_PRESS)
 		m_show_imgui = !m_show_imgui;
+	if (key == GLFW_KEY_LEFT && action == GLFW_PRESS)
+		m_registration_matrix[3][0] -= 5.0f;
+	if (key == GLFW_KEY_RIGHT && action == GLFW_PRESS)
+		m_registration_matrix[3][0] += 5.0f;
+	if (key == GLFW_KEY_PAGE_UP && action == GLFW_PRESS)
+		m_registration_matrix[3][1] -= 5.0f;
+	if (key == GLFW_KEY_PAGE_DOWN && action == GLFW_PRESS)
+		m_registration_matrix[3][1] += 5.0f;
+	if (key == GLFW_KEY_UP && action == GLFW_PRESS)
+		m_registration_matrix[3][2] -= 5.0f;
+	if (key == GLFW_KEY_DOWN && action == GLFW_PRESS)
+		m_registration_matrix[3][2] += 5.0f;
 
+	std::cout << "manual x " << m_registration_matrix[3][0] << " manual y " << m_registration_matrix[3][1] << " manual z " << m_registration_matrix[3][2] << std::endl;
 }
 
 void kRender::SetCallbackFunctions()
@@ -104,6 +117,7 @@ GLFWwindow * kRender::loadGLFWWindow()
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	//glfwWindowHint(GLFW_REFRESH_RATE, 30);
 	glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
+	glEnable(GL_DEPTH_TEST);
 
 	m_window = glfwCreateWindow(m_screen_width, m_screen_height, "SDFFusion", nullptr, nullptr);
 
@@ -138,7 +152,22 @@ void kRender::getMouseClickPositionsDepth()
 	// vector of 2d depth pos from 2d pixel location of depth or IR image
 }
 
+void kRender::setRegistrationMatrix(glm::mat4 reg)
+{
+	glm::mat4 regTran = glm::transpose(reg);
+	glm::mat4 regInv = glm::inverse(regTran);
+	m_registration_matrix = regInv;
 
+
+
+}
+
+void kRender::resetRegistrationMatrix()
+{
+	m_registration_matrix = glm::mat4(1);
+	m_depthPixelPoints2D.resize(0);
+	m_depthPointsFromBuffer.resize(0);
+}
 
 
 
@@ -202,15 +231,23 @@ void kRender::setLocations()
 	m_ambientID = glGetUniformLocation(renderProg.getHandle(), "ambient");
 	m_lightID = glGetUniformLocation(renderProg.getHandle(), "light");
 
+	m_irBrightnessID = glGetUniformLocation(renderProg.getHandle(), "irBrightness");
+
 	m_DepthSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromDepth");
+	m_InfraSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromInfra");
 	m_ColorSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromColor");
 	m_FlowSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromFlow");
 	m_VertexSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromVertex");
 	m_PointsSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromPoints");
+	m_CalibrationSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromCalibration");
 	m_colorTypeSubroutineID = glGetSubroutineUniformLocation(renderProg.getHandle(), GL_FRAGMENT_SHADER, "getColorSelection");
 
 	m_vertex3DSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_VERTEX_SHADER, "fromVertex3D");
 	m_depth2DSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_VERTEX_SHADER, "fromDepth2D");
+	m_color2DSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_VERTEX_SHADER, "fromColor2D");
+
+
+	m_position2DSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_VERTEX_SHADER, "fromPosition2D");
 	m_depthDataTypeSubroutineID = glGetSubroutineUniformLocation(renderProg.getHandle(), GL_VERTEX_SHADER, "getPositionSelection");
 
 
@@ -229,13 +266,23 @@ void kRender::setVertPositions()
 		-1.0f, 1.0f, 0.0f, 0.0f, 1.0f  // Top left
 	};
 
-	//std::vector<float> verticesDepth = {
-	//	// Positions		// Texture coords
-	//	1920.0f / 2.0f, 1080.0f / 2.0f, 0.0f, 1.0f, 1.0f, // top right
-	//	1920.0f / 2.0f, -1080.0f / 2.0f, 0.0f, 1.0f, 0.0f, // bottom right
-	//	-1920.0f / 2.0f, -1080.0f / 2.0f, 0.0f, 0.0f, 0.0f, // bottom left
-	//	-1920.0f / 2.0f, 1080.0f / 2.0f, 0.0f, 0.0f, 1.0f  // Top left
-	//};
+	std::vector<float> verticesColor = {
+		// Positions			  // Texture coords
+		1920.0f, 1080.0f,	0.0f, 1.0f, 1.0f, // top right
+		1920.0f, 0,			0.0f, 1.0f, 0.0f, // bottom right
+		0,		 0,			0.0f, 0.0f, 0.0f, // bottom left
+		0,		 1080.0f,	0.0f, 0.0f, 1.0f  // Top left
+	};
+	m_color_vert = verticesColor;
+
+	std::vector<float> verticesDepth = {
+		// Positions			  // Texture coords
+		512.0f,  424.0f,	0.0f, 1.0f, 1.0f, // top right
+		512.0f,	 0,			0.0f, 1.0f, 0.0f, // bottom right
+		0,		 0,			0.0f, 0.0f, 0.0f, // bottom left
+		0,		 424.0f,	0.0f, 0.0f, 1.0f  // Top left
+	};
+	m_depth_vert = verticesDepth;
 
 	//std::vector<float> vertices = {
 	//	// Positions		// Texture coords
@@ -262,6 +309,11 @@ void kRender::setVertPositions()
 	colorDepthMapping.resize(m_depth_height * m_depth_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
 	m_colorDepthMapping = colorDepthMapping;
 
+	std::vector<float> checkerBoardPoints;
+	checkerBoardPoints.resize(5 * 7 * 2);
+	m_infra_checkerboard_verts = checkerBoardPoints;
+	m_color_checkerboard_verts = checkerBoardPoints;
+
 }
 
 
@@ -272,23 +324,53 @@ void kRender::setTextures()
 	glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	glGenVertexArrays(1, &m_VAO);
-	glGenBuffers(1, &m_VBO);
+	glGenBuffers(1, &m_VBO_Color);
+	glGenBuffers(1, &m_VBO_Depth);
 	glGenBuffers(1, &m_EBO);
 
 	glBindVertexArray(m_VAO);
-	glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
-	glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(float), &m_vertices[0], GL_STATIC_DRAW);
+	//glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+	//glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(float), &m_vertices[0], GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Color);
+	glBufferData(GL_ARRAY_BUFFER, m_color_vert.size() * sizeof(float), &m_color_vert[0], GL_STATIC_DRAW);
 
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), &m_indices[0], GL_STATIC_DRAW);
 
-	// Position attribute
+	// Position attribute for Color
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)0);
 	glEnableVertexAttribArray(0);
 
-	// TexCoord attribute
+	// TexCoord attribute for Color
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
 	glEnableVertexAttribArray(1);
+
+	// now go for depth
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBO_Depth);
+	glBufferData(GL_ARRAY_BUFFER, m_depth_vert.size() * sizeof(float), &m_depth_vert[0], GL_STATIC_DRAW);
+
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indices.size() * sizeof(unsigned int), &m_indices[0], GL_STATIC_DRAW);
+	
+	// Position attribute for Depth
+	glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)0);
+	glEnableVertexAttribArray(2);
+
+	// TexCoord attribute for Depth
+	glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (GLvoid*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(3);
+
+	// setup and bind VBO to VAO 
+	glGenBuffers(1, &m_VBO_checkerboard);
+	glBindBuffer(GL_ARRAY_BUFFER, m_VBO_checkerboard);
+	glBufferData(GL_ARRAY_BUFFER, m_infra_checkerboard_verts.size() * sizeof(float), &m_infra_checkerboard_verts[0], GL_DYNAMIC_DRAW); //we will overwrite this on the fly anyway with both color and infra as needed, so no need to bind the color vector
+
+	// Position attribute
+	int bindLoc_CB = 5;
+	glVertexAttribPointer(bindLoc_CB, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(bindLoc_CB);
+
+
 	glBindVertexArray(0);
 
 	// set up VOA for pointcloud
@@ -305,7 +387,7 @@ void kRender::setTextures()
 	glBufferData(GL_ARRAY_BUFFER, m_colorDepthMapping.size() * sizeof(float), &m_colorDepthMapping[0], GL_DYNAMIC_DRAW);
 
 	// bind buffers to VAO
-	int bindingLocation_buf_pointcloud = 2;
+	int bindingLocation_buf_pointcloud = 4;
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
 	glVertexAttribPointer(bindingLocation_buf_pointcloud, 4, GL_FLOAT, GL_FALSE, 0, 0); // 4  floats per vertex, x,y,z and 1 for padding? this is annoying...
 	glEnableVertexAttribArray(bindingLocation_buf_pointcloud);
@@ -316,7 +398,6 @@ void kRender::setTextures()
 	glEnableVertexAttribArray(bindingLocation_buf_color_depth_map);
 
 	glBindVertexArray(0);
-
 
 
 
@@ -454,231 +535,293 @@ void kRender::labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap
 
 }
 
-void kRender::renderLiveVideoWindow(float* depthArray)
+void kRender::setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag)
 {
-	//glm::mat4 projection = glm::ortho(0.0f, 512.0f, 0.0f, 424.0f);
-	// Camera matrix
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, -0.f, -0.1f));
+	m_showDepthFlag = showDepthFlag;
+	m_showInfraFlag = showInfraFlag;
+	m_showColorFlag = showColorFlag;
+	m_showLightFlag = showLightFlag;
+	m_showPointFlag = showPointFlag;
+}
 
-	glm::mat4 model = glm::mat4(1.0f);
-	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
 
-	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1500.0f);
-
-	glm::mat4 MVP = Projection * View * model;
-
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+// set up the data buffers for rendering
+void kRender::setBuffersForRendering(float * depthArray, float * infraArray, float * colorArray)
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
 
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_DepthSubroutineID);
-	//glUseProgram(m_programID);
-
-	//// Bind Textures using texture units
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, m_textureDepth);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, 512, 424, GL_RED, GL_FLOAT, depthArray);
-	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+	if (depthArray != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RED, GL_FLOAT, depthArray);
+	}
 
-	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_textureInfra);
+	if (infraArray != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RED, GL_FLOAT, infraArray);
+	}
 
-
-
-}
-
-void kRender::renderColorWindow(float* colorArray)
-{
-	// Camera matrix
-	glm::mat4 View = ColorView;
-
-	glm::mat4 model = glm::mat4(1.0f);
-
-	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	//glm::mat4 Projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f, -1.0f, 1000.0f);
-	
-	glm::mat4 MVP = Projection * View * model;
-
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, 0, m_color_width * m_render_scale_width, m_color_height * m_render_scale_height);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_ColorSubroutineID);
-
-	//glUseProgram(m_programID);
-
-	//// Bind Textures using texture units
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, m_textureColor);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+	if (colorArray != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
+	}
 
+
+
+
+
+}
+
+void kRender::setDepthImageRenderPosition()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 1500.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_depth = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, -halfHeightAtDist, -zDist));
+
+}
+
+void kRender::setColorImageRenderPosition()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 4000.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, -halfHeightAtDist, -zDist));
+
+	//m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, 0.0f, -2000.0f));
+}
+
+void kRender::setInfraImageRenderPosition()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 1500.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_infra = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, halfHeightAtDist - m_depth_height, -zDist));
+
+}
+
+void kRender::setPointCloudRenderPosition(float modelZ)
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = zDist + modelZ;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_pointcloud = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, zDist));
+
+	glm::mat4 flipYZ = glm::mat4(1);
+	//flipYZ[0][0] = -1.0f;
+	flipYZ[1][1] = -1.0f;
+	flipYZ[2][2] = -1.0f;
+
+	m_model_pointcloud = flipYZ * m_model_pointcloud;
+
+}
+
+void kRender::setLightModelRenderPosition()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 1500.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_lightmodel = glm::translate(glm::mat4(1.0f), glm::vec3(halfWidthAtDistance - m_depth_width, -halfHeightAtDist, -zDist));
+
+}
+
+
+void kRender::setViewMatrix(float xRot, float yRot, float zRot, float xTran, float yTran, float zTran)
+{
+	glm::mat4 t0, t1, r0;
+	m_view = glm::mat4(1.0f);
+
+	t0 = glm::translate(glm::mat4(1.0), glm::vec3(xTran, yTran, zTran));
+	t1 = glm::translate(glm::mat4(1.0), glm::vec3(-xTran, -yTran, -zTran));
+
+	r0 = glm::eulerAngleXYZ(glm::radians(xRot), glm::radians(yRot), glm::radians(zRot));
+	
+
+	m_view = t1 * r0 * t0;
+	//m_view = glm::translate(m_view, glm::vec3(0.0f, 0.0f, 0.0f));
+
+}
+
+void kRender::setProjectionMatrix()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	m_projection = glm::perspective(glm::radians(45.0f), (float)w / (float)h, 1.0f, 10000.0f); // scaling the texture to the current window size seems to work
+	glViewport(0, 0, w, h);
+
+
+}
+
+
+void kRender::renderLiveVideoWindow()
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	renderProg.use();
 	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	glm::mat4 MVP;
+
+	// FOR DEPTH
+	if (m_showDepthFlag)
+	{
+		MVP = m_projection * m_view * m_model_depth;
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_DepthSubroutineID);
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		// draw depth tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
+
+
+
+
+	// FOR INFRA
+	if (m_showInfraFlag)
+	{
+		MVP = m_projection * m_view * m_model_infra;
+		glUniform1f(m_irBrightnessID, m_ir_brightness);
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID); // use the depth vertex subroutine
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_InfraSubroutineID); // use the infra fragment subroutine
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		//draw infra tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
+
+
+	//FOR COLOR
+	if (m_showColorFlag)
+	{
+		MVP = m_projection * m_view * m_model_color;
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_color2DSubroutineID);
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_ColorSubroutineID);
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		//draw color tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
+
+
+	// FOR CALIBRATION POINTS
+	// INFRA
+	if (m_showInfraFlag)
+	{
+		if (m_infra_checkerboard_verts.size() > 0)
+		{
+			glm::mat4 model_calib_points = glm::translate(m_model_infra, glm::vec3(0.0f, 0.0f, 1.0f)); // small z shift so that you can see the pixels in front of the infrared tile
+			MVP = m_projection * m_view * model_calib_points;
+			glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+			glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_position2DSubroutineID);
+			glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_CalibrationSubroutineID);
+			glBindBuffer(GL_ARRAY_BUFFER, m_VBO_checkerboard);
+			glBufferSubData(GL_ARRAY_BUFFER, 0, m_infra_checkerboard_verts.size() * sizeof(float), m_infra_checkerboard_verts.data());
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+			glPointSize(5.0f);
+
+			glDrawArrays(GL_POINTS, 0, 5 * 7 * 2);
+		}
+	}
+
+	// COLOR
+	if (m_showColorFlag)
+	{
+		if (m_color_checkerboard_verts.size() > 0)
+		{
+			glm::mat4 model_calib_points = glm::translate(m_model_color, glm::vec3(0.0f, 0.0f, 10.0f)); // small z shift so that you can see the pixels in front of the infrared tile
+			MVP = m_projection * m_view * model_calib_points;
+			glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+			glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_position2DSubroutineID);
+			glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_CalibrationSubroutineID);
+			glBindBuffer(GL_ARRAY_BUFFER, m_VBO_checkerboard);
+			glBufferSubData(GL_ARRAY_BUFFER, 0, m_color_checkerboard_verts.size() * sizeof(float), m_color_checkerboard_verts.data());
+			glBindBuffer(GL_ARRAY_BUFFER, 0);
+			glPointSize(5.0f);
+
+			glDrawArrays(GL_POINTS, 0, 5 * 7 * 2);
+		}
+	}
+
+	// FOR LIGHTMODEL
+	if (m_showLightFlag)
+	{
+		MVP = m_projection * m_view * m_model_lightmodel;
+		glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
+		glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+		// Bind Textures using texture units
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, m_textureVertex);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, m_textureNormal);
+
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
+
+		glUniform3fv(m_lightID, 1, glm::value_ptr(light));
+		glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+
+
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
+
 
 	glBindVertexArray(0);
 }
+
+
 
 void kRender::renderFlow(unsigned char* flowPtr)
 {
-	glm::mat4 projection = glm::ortho(0.0f, 512.0f, 0.0f, 424.0f);
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(m_anchorMW.first, m_anchorMW.second - m_depth_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_FlowSubroutineID);
-
-	//// Bind Textures using texture units
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, m_textureFlow);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
-	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(projection));
-
-	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-	glBindVertexArray(0);
-
-
-
-}
-
-void kRender::copyToPreviousFrame()
-{
-
-	//glCopyImageSubData(m_textureDepth, GL_TEXTURE_2D, 0, 0, 0, 0,
-	//	m_textureDepthPrevious, GL_TEXTURE_2D, 0, 0, 0, 0,
-	//	m_screen_width, m_screen_height, 1);
-
-	// OR
-
-	//GLuint tempTexture = m_textureDepth;
-	//m_textureDepth = m_textureDepthPrevious;
-	//m_textureDepthPrevious = tempTexture;
-
-}
-
-void kRender::renderPrevious()
-{
 	//glm::mat4 projection = glm::ortho(0.0f, 512.0f, 0.0f, 424.0f);
-	// Camera matrix
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(-0.3f, -0.f, -3.1f));
+	//int w, h;
+	//glfwGetFramebufferSize(m_window, &w, &h);
+	//glViewport(m_anchorMW.first, m_anchorMW.second - m_depth_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
-	glm::mat4 model = glm::mat4(1.0f);
-	//model = glm::rotate(model, 0.1f, glm::vec3(0, 1, 0));
+	//glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	//renderProg.use();
+	//glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
 
-	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	glm::mat4 Projection = glm::ortho(0.0f, 1.0f, 0.0f, 1.0f, -1.0f, 1000.0f);
+	//glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_FlowSubroutineID);
 
-	glm::mat4 MVP = Projection * View * model;
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(m_anchorMW.first, m_anchorMW.second, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_DepthSubroutineID);
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
-
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
-	//glUseProgram(m_programID);
-
-	//// Bind Textures using texture units
-	//glActiveTexture(GL_TEXTURE0);
-	//glBindTexture(GL_TEXTURE_2D, m_textureDepthPrevious);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	//glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, 512, 424, GL_RED, GL_FLOAT, depthArray);
-	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
+	////// Bind Textures using texture units
+	//glActiveTexture(GL_TEXTURE3);
+	//glBindTexture(GL_TEXTURE_2D, m_textureFlow);
+	////glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
+	//glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
+	////glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
 	//glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(projection));
 
-	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
+	//glBindVertexArray(m_VAO);
+	//glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	//glBindVertexArray(0);
 
 
 
 }
 
-void kRender::renderPreviousColor()
+
+void kRender::computeDepthToVertex()
 {
-	// Camera matrix
-	//glm::mat4 View = glm::lookAt(
-	//	glm::vec3(0, 0, 20), // Camera is at (4,3,3), in World Space
-	//	glm::vec3(0, 0, 0), // and looks at the origin
-	//	glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
-	//);
-
-	glm::mat4 model = glm::mat4(1.0f);
-
-	glm::mat4 View = ColorView;
-
-	glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 100.0f);
-	//glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
-
-	//glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f);
-	glm::mat4 MVP = Projection * View * model;
-
-	glm::mat4 projection = glm::ortho(0.0f, 1920.0f, 0.0f, 1080.0f);
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, 0, m_color_width * m_render_scale_width, m_color_height * m_render_scale_height);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_ColorSubroutineID);
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
-
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
-	//glUseProgram(m_programID);
-
-	//// Bind Textures using texture units
-	//glActiveTexture(GL_TEXTURE0);
-	//glBindTexture(GL_TEXTURE_2D, m_textureDepthPrevious);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1920, 1080, 0, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
-	//glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, 512, 424, GL_RED, GL_FLOAT, depthArray);
-	//glUniform1i(glGetUniformLocation(m_programID, "_currentTexture"), 0);
-	//glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(projection));
-
-	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-	glBindVertexArray(0);
-
-
-
-}
-
-void kRender::drawPoints()
-{
-
-	glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
-	glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
-
 	// get inverse camera matrix
 	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams);
 
@@ -695,29 +838,87 @@ void kRender::drawPoints()
 
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+}
 
+void kRender::computeVertexToNormal()
+{
 	glBindImageTexture(0, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	glBindImageTexture(1, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 	v2nProg.use();
+
+	int xWidth = divup(m_depth_width, 32);
+	int yWidth = divup(m_depth_height, 32);
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+void kRender::renderPointCloud()
+{
+	if (m_showPointFlag)
+	{
+		glm::mat4 MVP = m_projection * m_view * m_model_pointcloud;
+
+		glEnable(GL_POINT_SPRITE);
+		glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
 
 
-	glEnable(GL_POINT_SPRITE);
-	glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
+
+
+
+
+
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+		// bind the color texture for color sampling
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_textureColor);
+
+		/*glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, m_textureNormal);*/
+
+
+		renderProg.use();
+
+		// set subroutines
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID); // "fromVertex3D"
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID); // "fromPoints"
+
+																			   //set uniforms
+		//glUniform3fv(m_lightID, 1, glm::value_ptr(light));
+		//glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		//glUniformMatrix4fv(m_ViewProjectionID, 1, GL_FALSE, glm::value_ptr(VP));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+
+		// draw points
+		glPointSize(2.0f);
+		glBindVertexArray(m_VAO_Pointcloud);
+		glDrawArrays(GL_POINTS, 0, 512 * 424);
+		glBindVertexArray(0);
+	}
+}
+
+void kRender::drawPoints()
+{
+
+
 
 
 	////// This works for grabbing the buffer from the compute3D shader and copying to host memory
 	std::vector<float> PC;
 	PC.resize(512 * 424 * 4);
-	////std::vector<float> NC;
-	////NC.resize(512 * 424 * 4);
+	std::vector<float> NC;
+	NC.resize(512 * 424 * 4);
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
 	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
 	memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
 	//// int oneDindex = (row * length_of_row) + column; // Indexes
 	glUnmapBuffer(GL_ARRAY_BUFFER);
 	
+	//std::vector<cv::Point3f> dPoints;
+
+
 	int ind = 0;
 	int numBadPixel = 0;
 	if (m_depthPixelPoints2D.size() > 0)
@@ -735,6 +936,8 @@ void kRender::drawPoints()
 			}
 			else
 			{
+				//dPoints.push_back(cv::Point3f(PC[index1D * 4], PC[(index1D * 4) + 1],PC[(index1D * 4) + 2]));
+
 				ind += 4;
 			}
 		}
@@ -751,10 +954,36 @@ void kRender::drawPoints()
 
 
 
+	if (m_export_ply)
+	{
+		writePLYFloat(PC, NC, "./outPC.ply");
+		setExportPly(false);
+	}
+
+	/// This was to see if the rvec and tvec from solvepnp appear to get the same color coords as when checking from the depth to color mapping table
+	//if (m_depthPixelPoints2D.size() > 4)
+	//{
+	//	cv::Mat imagePointsMat;
+	//	cv::Mat colorCamPams = cv::Mat::eye(3, 3, CV_32F);
+	//	cv::Mat colorCamDist = cv::Mat(4, 1, CV_32F);
+	//	colorCamPams.at<float>(0, 0) = 992.2276f;
+	//	colorCamPams.at<float>(1, 1) = 990.6481f;
+	//	colorCamPams.at<float>(0, 2) = (1920.0f - 940.4056f);
+	//	colorCamPams.at<float>(1, 2) = (1080.0f - 546.1401f);
+
+	//	colorCamDist.at<float>(0, 0) = 0.002308769f;
+	//	colorCamDist.at<float>(1, 0) = -0.03766959f;
+	//	colorCamDist.at<float>(2, 0) = -0.0063f;
+	//	colorCamDist.at<float>(3, 0) = 0.0036f;
+
+	//	cv::projectPoints(dPoints, rotation_vector, translation_vector, colorCamPams, colorCamDist, imagePointsMat);
+
+	//	std::cout << imagePointsMat << std::endl;
+	//}
 
 
-	
-	//writePLYFloat(PC, NC, "./outPC.ply");
+
+	//
 
 
 
@@ -766,53 +995,26 @@ void kRender::drawPoints()
 	//);
 
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-	glm::mat4 model = glm::mat4(1.0f);
-	//model = glm::rotate(model, 1.0f, glm::vec3(0, 1, 0));
+	glm::mat4 View0 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+	glm::mat4 View =  m_registration_matrix * View0;
 
-	glm::mat4 Projection = glm::perspective(512.0f/424.0f, 1.0f, 0.1f, 2500.0f);
-	//glm::mat4 Projection = glm::ortho(-1000.0f, 1000.0f, -1000.0f, 1000.0f, -1.0f, 2500.0f);
+	glm::mat4 model = glm::mat4(1.0f);
+	// flip axis y and z
+
+
+	//View = View * flipYZ;
+	//model = glm::rotate(model, 180.0f, glm::vec3(0, 1, 0));
+
+	glm::mat4 Projection = glm::perspective(glm::radians(75.0f), 1920.0f / 1080.0f, -1.0f, 100.0f); // 1920.0f/1080.0f    512.0f / 424.0f //GLM USES RADIANSSO CONVERT!!!
+	//glm::mat4 Projection = glm::ortho(-800.0f, 800.0f, -800.0f, 800.0f, -1.0f, 2500.0f);
+	glm::mat4 MV = View * model;
 	glm::mat4 MVP = Projection * View * model;
-	glm::mat4 VP = Projection * View * model;
+	glm::mat4 VP = Projection * View;
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
 
-	//glViewport((w / 2) - ((m_depth_width * m_render_scale_width) / 2), (h / 2) - ((m_depth_height * m_render_scale_height) / 2), m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-	// bottom right
-	//glViewport((w - (m_depth_width * m_render_scale_width)), 0, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-	//top left
-	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
 
 
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	// bind the color texture for color sampling
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, m_textureColor);
-
-	/*glActiveTexture(GL_TEXTURE5);
-	glBindTexture(GL_TEXTURE_2D, m_textureNormal);*/
-
-
-	renderProg.use();
-
-	// set subroutines
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID); // "fromVertex3D"
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID); // "fromPoints"
-
-	//set uniforms
-	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
-	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
-	glUniformMatrix4fv(m_ViewProjectionID, 1, GL_FALSE, glm::value_ptr(VP));
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
-	
-	// draw points
-	//glPointSize(2.0f);
-	glBindVertexArray(m_VAO_Pointcloud);
-	glDrawArrays(GL_POINTS, 0, 512*424);
-	glBindVertexArray(0);
 
 
 
@@ -827,6 +1029,8 @@ void kRender::drawPoints()
 
 
 }
+
+
 
 void kRender::drawLightModel()
 {
@@ -851,18 +1055,16 @@ void kRender::drawLightModel()
 	// Bind Textures using texture units
 	glActiveTexture(GL_TEXTURE4);
 	glBindTexture(GL_TEXTURE_2D, m_textureVertex);
-
 	glActiveTexture(GL_TEXTURE5);
 	glBindTexture(GL_TEXTURE_2D, m_textureNormal);
 
 	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-
 	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
 
 	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
 	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
 
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(Projection));
+	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
 
 	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
 
@@ -998,7 +1200,9 @@ void kRender::drawLightModel()
 void kRender::cleanUp()
 {
 	glDeleteVertexArrays(1, &m_VAO);
-	glDeleteBuffers(1, &m_VBO);
+	glDeleteBuffers(1, &m_VBO_Color);
+	glDeleteBuffers(1, &m_VBO_Depth);
+
 	glDeleteBuffers(1, &m_EBO);
 	glfwTerminate();
 
@@ -1007,6 +1211,46 @@ void kRender::cleanUp()
 
 
 
+
+
+void kRender::setCheckerBoardPointsColor(std::vector<cv::Point2f> pointsColor)
+{
+	if (pointsColor.empty())
+	{
+		m_color_checkerboard_verts.resize(0);
+	}
+	else
+	{
+		m_color_checkerboard_verts.resize(7 * 5 * 2);
+		int j = 0;
+		for (int i = 0; i < pointsColor.size(); i++, j += 2)
+		{
+			m_color_checkerboard_verts[j] = pointsColor[i].x; // here we scale down and shift to -1.0 -> 1.0
+			m_color_checkerboard_verts[j + 1] = (m_color_height - pointsColor[i].y); // y is flipped here.... does this matter? or is it just so that openGL renders the point correctly, since the texture read is 1 - texture.y
+		}
+
+	}
+}
+
+void kRender::setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra)
+{
+	if (pointsInfra.empty())
+	{
+		m_infra_checkerboard_verts.resize(0);
+	}
+	else
+	{
+		m_infra_checkerboard_verts.resize(7 * 5 * 2);
+		//m_detected_points_infra = pointsInfra;
+		int j = 0;
+		for (int i = 0; i < pointsInfra.size(); i++, j += 2)
+		{
+			m_infra_checkerboard_verts[j] = pointsInfra[i].x; // here we scale down and shift to -1.0 -> 1.0
+			m_infra_checkerboard_verts[j + 1] = (m_depth_height - pointsInfra[i].y); // y is flipped here.... does this matter? or is it just so that openGL renders the point correctly, since the texture read is 1 - texture.y
+		}
+
+	}
+}
 
 
 

@@ -99,7 +99,7 @@ int main(int, char**)
 
 		//krender.requestShaderInfo();
 
-		krender.setCameraParams(glm::vec4(kcamera.fx() + 10.0f, kcamera.fx() - 10.0f, kcamera.ppx(), kcamera.ppy()+ 10.0f)); // FIX ME
+		krender.setCameraParams(glm::vec4(kcamera.fx(), kcamera.fx(), kcamera.ppx(), kcamera.ppy())); // FIX ME
 
 		if (kcamera.ready())
 		{
@@ -108,8 +108,14 @@ int main(int, char**)
 			newColor = cv::Mat(1080, 1920, CV_8UC4, colorArray);
 
 
+			cv::Mat infra = cv::Mat(depthHeight, depthWidth, CV_32FC1, infraredArray);
+			
+			infra.convertTo(infraGrey, CV_8UC1, 1.0f / (irBrightness / 100.0f));
+			//cv::imshow("irssdf", infraGrey);
 
 
+			OCVStuff.setColorMat(colorArray);
+			OCVStuff.setInfraMat(infraGrey);
 
 
 
@@ -299,7 +305,7 @@ int main(int, char**)
 			{
 				//ImGui::SetNextWindowPos(ImVec2(650, 20), ImGuiSetCond_FirstUseEver);
 				//ImGui::ShowTestWindow(&show_test_window);
-				ImGui::SetNextWindowSize(ImVec2((display_w / 4) - (2 * krender.guiPadding().first), (display_h / 2) - (1.5 * krender.guiPadding().second)), ImGuiSetCond_Always);
+				ImGui::SetNextWindowSize(ImVec2((display_w / 4), (display_h / 2) - (1.5 * krender.guiPadding().second)), ImGuiSetCond_Always);
 				ImGuiWindowFlags window_flags = 0;
 				window_flags |= ImGuiWindowFlags_NoTitleBar;
 				window_flags |= ImGuiWindowFlags_ShowBorders;
@@ -307,38 +313,140 @@ int main(int, char**)
 				window_flags |= ImGuiWindowFlags_NoMove;
 				window_flags |= ImGuiWindowFlags_NoCollapse;
 
-				ImGui::Begin("Slider Graph", &show_slider_graph, window_flags);
+				ImGui::Begin("Menu", &show_slider_graph, window_flags);
+				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+
 				ImGui::PushItemWidth(-krender.guiPadding().first);
-				ImGui::SetWindowPos(ImVec2(display_w - (display_w / 4) - (2 * krender.guiPadding().first) - krender.guiPadding().first, ((krender.guiPadding().second * 0.5f) + (0))   ));
+				ImGui::SetWindowPos(ImVec2(display_w - (display_w / 4) - krender.guiPadding().first, ((krender.guiPadding().second) + (0))   ));
 				ImGui::Text("Help menu - press 'H' to hide");
+
+				ImGui::Separator();
+				ImGui::Text("View Options");
+
+				if (ImGui::Button("Show Depth")) showDepthFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &showDepthFlag);
+				if (ImGui::Button("Show Infra")) showInfraFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &showInfraFlag);
+				if (ImGui::Button("Show Color")) showColorFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &showColorFlag);
+				if (ImGui::Button("Show Light")) showLightFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &showLightFlag);
+				if (ImGui::Button("Show Point")) showPointFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &showPointFlag);
+
+				ImGui::Separator();
+				ImGui::Text("Other Options");
+
 				if (ImGui::Button("Select color points")) select_color_points_mode ^= 1; ImGui::SameLine();
 				if (ImGui::Button("Reset")) OCVStuff.resetColorPoints();
 
 				if (ImGui::Button("Select depth points")) select_depth_points_mode ^= 1; ImGui::SameLine();
-				if (ImGui::Button("Reset")) OCVStuff.resetDepthPoints();
+				if (ImGui::Button("Reset Depth")) krender.resetRegistrationMatrix();
+
+				if (ImGui::Button("Export PLY")) krender.setExportPly(true);
+				if (ImGui::Button("Save Color")) OCVStuff.saveImage(0); // saving color image (flag == 0)
+				ImGui::Separator();
+				ImGui::Text("View Transforms");
+				ImGui::SliderFloat("xRot", &xRot, 0.0f, 90.0f);
+				ImGui::SliderFloat("yRot", &yRot, 0.0f, 90.0f);
+				ImGui::SliderFloat("zRot", &zRot, 0.0f, 90.0f);
+
+				ImGui::SliderFloat("xTran", &xTran, -2000.0f, 2000.0f);
+				ImGui::SliderFloat("yTran", &yTran, -2000.0f, 2000.0f);
+				ImGui::SliderFloat("zTran", &zTran, 0.0f, 4000.0f);
+
+				ImGui::SliderFloat("model z", &zModelPC_offset, -4000.0f, 4000.0f);
+				ImGui::Separator();
+				ImGui::Text("Infrared Adj.");
+
+				//cv::imshow("irg", infraGrey);
+
+				if (ImGui::Button("Save Infra")) OCVStuff.saveImage(1); ImGui::SameLine(); // saving infra image (flag == 1)
+				ImGui::SliderFloat("IR", &irBrightness, 5000.0f, 35000.0f);
+				krender.setIrBrightness(irBrightness);
+
+				ImGui::Separator();
+				ImGui::Text("Calibration Misc.");
+				if (ImGui::Button("Calibrate")) calibratingFlag ^= 1; ImGui::SameLine();
+				ImGui::Checkbox("", &calibratingFlag);
+				if (ImGui::Button("Color")) OCVStuff.addCurrentColorImage();  ImGui::SameLine();
+				if (ImGui::Button("Infra")) OCVStuff.addCurrentInfraImage();  ImGui::SameLine();
+				if (ImGui::Button("Both")) 
+				{
+					OCVStuff.addCurrentColorImage();
+					OCVStuff.addCurrentInfraImage();
+				}
+
+				if (ImGui::Button("Calibrate Color")) OCVStuff.calibrateImagesColor(); ImGui::SameLine();
+				if (ImGui::Button("Calibrate Infra")) OCVStuff.calibrateImagesInfra(); ImGui::SameLine();
+
+				//cv::imshow("irg", infraGrey);
+				//if (ImGui::Button("Save Depth")) saveDepthImage(float * colorArray);
 
 				ImGui::End();
 
 			}
 
+			if (calibratingFlag)
+			{
+				OCVStuff.findCheckerBoard();
+				std::vector<cv::Point2f> detectedColor;
+				std::vector<cv::Point2f> detectedInfra;
 
+				detectedColor = OCVStuff.getCheckerBoardPointsColor();
+				detectedInfra = OCVStuff.getCheckerBoardPointsInfra();
+
+				krender.setCheckerBoardPointsColor(detectedColor);
+				krender.setCheckerBoardPointsInfra(detectedInfra);
+
+			}
 
 			
 			if (newFrame)
 			{
-				krender.renderLiveVideoWindow(depthArray);
-				krender.renderColorWindow(colorArray);
 				krender.setColorDepthMapping(colorDepthMap);
-				krender.drawPoints();
+
+				krender.setRenderingOptions(showDepthFlag, showInfraFlag, showColorFlag, showLightFlag, showPointFlag);
+
+
+
+				krender.setBuffersForRendering(depthArray, infraredArray, colorArray);
+				krender.setDepthImageRenderPosition();
+				krender.setInfraImageRenderPosition();
+				krender.setColorImageRenderPosition();
+				krender.setPointCloudRenderPosition(zModelPC_offset);
+				krender.setLightModelRenderPosition();
+				krender.setViewMatrix(xRot, yRot, zRot, xTran, yTran, zTran);
+				krender.setProjectionMatrix();
+
+				krender.renderLiveVideoWindow();
+
+
+				// compute time
+				krender.computeDepthToVertex();
+				krender.computeVertexToNormal();
+				krender.renderPointCloud();
+
+				//krender.drawPoints();
 			}
 			else 
 			{
-				krender.renderPrevious();
-				krender.renderPreviousColor();
 				krender.setColorDepthMapping(colorDepthMap);
-				krender.drawPoints();
+
+				krender.setBuffersForRendering(NULL, NULL, NULL);
+
+				krender.renderLiveVideoWindow();
+
+				krender.renderPointCloud();
+
+				//krender.drawPoints();
 
 
+			}
+
+			if (calibratingFlag)
+			{
+				//krender.renderInfraWindow();
 			}
 
 			if (select_color_points_mode && newFrame == true)
@@ -401,21 +509,21 @@ int main(int, char**)
 
 					depthPoints.resize(numPoints);
 					colorPoints.resize(numPoints);
-					cv::Mat tDepth = cv::Mat(424, 512, CV_32SC1, colorDepthMap);
+					//cv::Mat tDepth = cv::Mat(424, 512, CV_32SC1, colorDepthMap);
 
 
 					int ind = 0;
 					for (int j = 0; j < numPoints; j++)
 					{
-						depthPoints[j].x = depthPointsFromBuffer[ind] / 1000.0f;
-						depthPoints[j].y = depthPointsFromBuffer[ind + 1] / 1000.0f;
-						depthPoints[j].z = depthPointsFromBuffer[ind + 2] / 1000.0f;
+						depthPoints[j].x = depthPointsFromBuffer[ind] / 1.0f;
+						depthPoints[j].y = depthPointsFromBuffer[ind + 1] / 1.0f;
+						depthPoints[j].z = depthPointsFromBuffer[ind + 2] / 1.0f;
 
 						int index = depthPointsFromBuffer[ind + 3];
 
 						int xPixDepth = index % 512;
 						int yPixDepth = index / 512;
-						cv::circle(tDepth, cv::Point2f(xPixDepth, yPixDepth), 10, cv::Scalar(0.0f, 0.0f, 0.0f, 255.0f), 5);
+						//cv::circle(tDepth, cv::Point2f(xPixDepth, yPixDepth), 10, cv::Scalar(0.0f, 0.0f, 0.0f, 255.0f), 5);
 
 
 						int colIndex = colorDepthMap[index];
@@ -425,8 +533,8 @@ int main(int, char**)
 
 						colorPoints[j] = cv::Point2f(xColor, yColor);
 
-						std::cout << "xCol: " << xColor << " yCol: " << yColor <<std::endl;
-						std::cout << "xDep: " << xPixDepth << " yDep: " << yPixDepth << std::endl;
+						//std::cout << "xCol: " << xColor << " yCol: " << yColor <<std::endl;
+						//std::cout << "xDep: " << xPixDepth << " yDep: " << yPixDepth << std::endl;
 
 
 
@@ -435,30 +543,38 @@ int main(int, char**)
 					}
 
 					//std::cout << "dep: " << depthPoints << std::endl;
-					//std::cout << "col: " << colorPoints << std::endl;
+					std::cout << "col: " << colorPoints << std::endl;
 
 					if (numPoints >= 4)
 					{
 						cv::Mat registration;
 						registration = OCVStuff.getDepthToColorMatrix(depthPoints, colorPoints);
 
+						//cv::Mat rvec = OCVStuff.getRVec();
+						//cv::Mat tvec = OCVStuff.getTVec();
+
+						//krender.setRVec(rvec);
+						//krender.setTVec(tvec);
+
+						glm::mat4 registrationGLM;
+						memcpy_s(&registrationGLM[0], 16 * sizeof(float), registration.data, 16 * sizeof(float));
+						krender.setRegistrationMatrix(registrationGLM);
 
 
 						std::cout << "reg: " << registration << std::endl;
 					}
+					
 
+					//for (int k = 0; k < numPoints; k++)
+					//{
+					//	cv::circle(newColor, colorPoints[k], 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
 
+					//}
+					//cv::Mat pDown;
+					//cv::pyrDown(newColor, pDown);
 
-					for (int k = 0; k < numPoints; k++)
-					{
-						cv::circle(newColor, colorPoints[k], 10, cv::Scalar(255.0f, 0.0f, 0.0f, 255.0f), 5);
-
-					}
-					cv::Mat pDown;
-					cv::pyrDown(newColor, pDown);
-
-					cv::imshow("with circles", pDown);
-					cv::imshow("irr", 0.1 * cv::Mat(424, 512, CV_32SC1, colorDepthMap));
+					//cv::imshow("with circles", pDown);
+					//cv::imshow("irr", 0.1 * cv::Mat(424, 512, CV_32SC1, colorDepthMap));
 
 					
 

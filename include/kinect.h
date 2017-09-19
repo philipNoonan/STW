@@ -56,3 +56,27 @@ bool select_depth_points_mode = false;
 std::vector<cv::Point3f> depthPoints;
 std::vector<cv::Point2f> colorPoints;
 cv::Mat newColor;
+
+bool showDepthFlag = false;
+bool showInfraFlag = false;
+bool showColorFlag = false;
+bool showLightFlag = false;
+bool showPointFlag = false;
+
+float irBrightness = 10000.0f;
+float xRot = 0.0f;
+float zRot = 0.0f;
+float yRot = 0.0f;
+float xTran = 0.0f;
+float yTran = 0.0f;
+float zTran = 2000.0f;
+
+float zModelPC_offset = 4000.0f;
+
+cv::Mat infraGrey;
+
+bool calibratingFlag = false;
+
+//////////////////////////////////////////////////
+// SAVING IMAGES
+

@@ -7,9 +7,19 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 #include <glm/gtx/transform.hpp>
 
 //#include "shader.hpp"
+
+
+#include "opencv2/core/utility.hpp"
+#include "opencv2/opencv.hpp"
+#include "opencv2/imgproc/imgproc.hpp"
+#include "opencv2/highgui/highgui.hpp"
+
+
+
 
 #include <iostream>
 #include <fstream>
@@ -21,7 +31,8 @@
 #include "glutils.h"
 #include "glslprogram.h"
 
-
+#define _USE_MATH_DEFINES
+#include <math.h>
 
 class kRender
 {
@@ -38,7 +49,8 @@ class kRender
 			, m_big_depth_height(1082)
 			, m_big_depth_width(1920)
 			, m_VAO()
-			, m_VBO()
+			, m_VBO_Color()
+			, m_VBO_Depth()
 			, m_EBO()
 			, m_gui_padding(std::make_pair<int,int>(50, 50))
 			, m_render_scale_height(1.0f)
@@ -125,12 +137,21 @@ class kRender
 		void setWindowLayout();
 		void setupComputeFBO();
 
+		// The correcter way 
+		void setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag);
+		void setBuffersForRendering(float * depthArray, float * colorArray, float * infraArray);
+		void setDepthImageRenderPosition();
+		void setColorImageRenderPosition();
+		void setInfraImageRenderPosition();
+		void setPointCloudRenderPosition(float modelZ);
+		void setLightModelRenderPosition();
+		void setViewMatrix(float xRot, float yRot, float zRot, float xTran, float yTran, float zTran);
+		void setProjectionMatrix();
+
 		void setColorDepthMapping(int* colorDepthMap);
-		void renderLiveVideoWindow(float* depthArray);
-		void renderColorWindow(float* colorArray);
-		void copyToPreviousFrame();
-		void renderPrevious();
-		void renderPreviousColor();
+		void renderLiveVideoWindow();
+
+
 
 		void renderFlow(unsigned char* flowPtr);
 		void drawPoints();
@@ -147,9 +168,35 @@ class kRender
 			return m_depthPixelPoints2D;
 		}
 		void labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap);
-
+		void setRegistrationMatrix(glm::mat4 reg);
+		void resetRegistrationMatrix();
+		void setExportPly(bool opt)
+		{
+			m_export_ply = opt;
+		}
 		//void setGraphPoints(int size, float valueX, float valueY, float valueZ);
 		//void updateGraphPoints(float valueX, float valueY, float valueZ);
+
+		void setRVec(cv::Mat rvec)
+		{
+			rotation_vector = rvec;
+		}
+		void setTVec(cv::Mat tvec)
+		{
+			translation_vector = tvec;
+		}
+		void setIrBrightness(float irb)
+		{
+			m_ir_brightness = irb;
+		}
+
+		void setCheckerBoardPointsColor(std::vector<cv::Point2f> pointsColor);
+		void setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra);
+
+		// compute shader time
+		void computeDepthToVertex();
+		void computeVertexToNormal();
+		void renderPointCloud();
 
 		void cleanUp();
 
@@ -162,16 +209,26 @@ private:
 	GLFWwindow * m_window;
 	bool m_show_imgui;
 
-	GLuint m_VBO, m_VAO, m_EBO;
+	GLuint m_VAO, m_EBO;
+	GLuint m_VBO_Color, m_VBO_Depth;
 	std::vector<float> m_vertices;
 	//GLfloat* m_vertices; 
 	std::vector<unsigned int> m_indices;
+
+	std::vector<float> m_color_vert;
+	std::vector<float> m_depth_vert;
 
 	GLuint m_VAO_Pointcloud;
 	GLuint m_buf_Pointcloud;
 	GLuint m_buf_color_depth_map;
 	std::vector<float> m_verticesPointcloud;
 	std::vector<float> m_colorDepthMapping;
+
+	GLuint m_VAO_checkerboard;
+	GLuint m_VBO_checkerboard;
+	std::vector<float> m_infra_checkerboard_verts;
+	std::vector<float> m_color_checkerboard_verts;
+
 
 	GLuint m_programID;
 	GLuint m_ProjectionID;
@@ -182,16 +239,22 @@ private:
 	GLuint m_ambientID;
 	GLuint m_lightID;
 
+	GLuint m_irBrightnessID;
+
 	GLuint m_DepthSubroutineID;
+	GLuint m_InfraSubroutineID;
 	GLuint m_ColorSubroutineID;
 	GLuint m_FlowSubroutineID;
 	GLuint m_VertexSubroutineID;
 	GLuint m_PointsSubroutineID;
+	GLuint m_CalibrationSubroutineID;
 	GLuint m_colorTypeSubroutineID;
 
 	GLuint m_fboComputeHandle;
 	GLuint m_vertex3DSubroutineID;
 	GLuint m_depth2DSubroutineID;
+	GLuint m_color2DSubroutineID;
+	GLuint m_position2DSubroutineID;
 	GLuint m_depthDataTypeSubroutineID;
 	GLuint m_invkID;
 
@@ -224,7 +287,7 @@ private:
 
 	std::pair<int, int> m_gui_padding;
 
-	glm::mat4 ColorView = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -5.2f));
+	glm::mat4 ColorView = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -0.0f));
 
 	glm::vec4 m_cameraParams;
 
@@ -245,10 +308,11 @@ private:
 
 
 
-
+	bool m_export_ply = false;
 
 	float m_mouse_pos_x;
 	float m_mouse_pos_y;
+	glm::mat4 m_registration_matrix = glm::mat4(1.0f);
 
 	// this static wrapped clas was taken from BIC comment on https://stackoverflow.com/questions/7676971/pointing-to-a-function-that-is-a-class-member-glfw-setkeycallback
 	void MousePositionCallback(GLFWwindow* window, double positionX, double positionY);
@@ -274,8 +338,25 @@ private:
 	std::vector<float> m_depthPointsFromBuffer;
 	std::vector<std::pair<int, int>> m_depthPixelPoints2D;
 
+	cv::Mat rotation_vector; // Rotation in axis-angle form
+	cv::Mat translation_vector;
 
+	float m_ir_brightness = 10000.0f;
+	//std::vector<cv::Point2f> m_detected_points_color;
+	//std::vector<cv::Point2f> m_detected_points_infra;
 
+	glm::mat4 m_model_depth = glm::mat4(1.0);
+	glm::mat4 m_model_color = glm::mat4(1.0);
+	glm::mat4 m_model_infra = glm::mat4(1.0);
+	glm::mat4 m_model_pointcloud = glm::mat4(1.0f);
+	glm::mat4 m_model_lightmodel = glm::mat4(1.0f);
+	glm::mat4 m_view = glm::mat4(1.0f);
+	glm::mat4 m_projection = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.1f, 3000.0f); // some default matrix
 
+	bool m_showDepthFlag = false;
+	bool m_showInfraFlag = false;
+	bool m_showColorFlag = false;
+	bool m_showLightFlag = false;
+	bool m_showPointFlag = false;
 
 };

@@ -17,6 +17,16 @@ public:
 	{}
 	~openCVStuff() {};
 
+	cv::Mat getRVec()
+	{
+		return rotation_vector;
+	}
+
+	cv::Mat getTVec()
+	{
+		return translation_vector;
+	}
+
 	void doOpticalFlow() {
 		if (m_grey0.empty())
 		{
@@ -30,6 +40,24 @@ public:
 
 	}
 
+	void setColorMat(float* colorArray)
+	{
+		m_colorImage = cv::Mat(1080, 1920, CV_8UC4, colorArray);
+	}
+
+	//void setInfraMat(float* infraArray, float &irBrightness)
+	//{
+	//	//std::cout << irBrightness << std::endl;
+	//	cv::Mat tIR = cv::Mat(424, 512, CV_32FC1, infraArray);
+	//	tIR.convertTo(m_infraImage, CV_8UC1, 1.0f / (irBrightness) );
+	//	cv::imshow("irsss", m_infraImage);
+	//}
+
+	void setInfraMat(cv::Mat ir)
+	{
+		m_infraImage = ir;
+	}
+
 	void resetColorPoints()
 	{
 	
@@ -40,34 +68,260 @@ public:
 
 	}
 
+	void findCheckerBoard()
+	{
+		//bool findChessboardCorners(InputArray image, Size patternSize, OutputArray corners, int flags=CALIB_CB_ADAPTIVE_THRESH+CALIB_CB_NORMALIZE_IMAGE )
+		// find in color image
+		cv::Mat pDownCol0;
+		cv::Mat pDownCol1;
+		cv::pyrDown(m_colorImage, pDownCol0);
+		cv::pyrDown(pDownCol0, pDownCol1);
+
+		std::vector<cv::Point2f> pDownDetectedPoints;
+		bool found = findChessboardCorners(pDownCol1, cv::Size(5, 7), pDownDetectedPoints);
+		m_detectedPointsColor.resize(pDownDetectedPoints.size());
+		for (int i = 0; i < pDownDetectedPoints.size(); i++)
+		{
+			m_detectedPointsColor[i].x = pDownDetectedPoints[i].x * 4.0f;
+			m_detectedPointsColor[i].y = pDownDetectedPoints[i].y * 4.0f;
+
+		}
+		// and ir image
+		findChessboardCorners(m_infraImage, cv::Size(5, 7), m_detectedPointsInfra);
+
+		//cv::drawChessboardCorners(m_colorImage, cv::Size(5, 7), m_detectedPointsColor, found);
+		//cv::imshow("irss", m_colorImage);
+
+		//std::cout << "found points " << m_detectedPointsInfra << std::endl;
+
+	}
+
+	void addCurrentColorImage()
+	{
+		// save image to disk for further viewing if needed
+		std::stringstream ss;
+		ss << "./data/calib/color_" << nColorImageSaved << ".png";
+		std::string fName = ss.str();
+		saveImage(m_colorImage, fName);
+
+		// add image to vector of cv::Mat
+		calibrationImagesColor.push_back(m_colorImage);
+
+
+	}
+
+	void addCurrentInfraImage()
+	{
+		std::stringstream ss;
+		ss << "./data/calib/infra_" << nInfraImageSaved << ".png";
+		std::string fName = ss.str();
+		saveImage(m_infraImage, fName);
+
+		calibrationImagesInfra.push_back(m_infraImage);
+
+
+	}
+
+	void saveCalibrationResults(const std::string &outFile, const cv::Size &imageSize, const cv::Mat &cameraMatrix, const cv::Mat &distCoeffs, double rpError)
+	{
+		cv::FileStorage fs(outFile, cv::FileStorage::WRITE);
+		if (fs.isOpened())
+		{
+			fs
+				<< "image_width" << imageSize.width
+				<< "image_height" << imageSize.height
+				<< "camera_matrix" << cameraMatrix
+				<< "distortion_coefficients" << distCoeffs
+				<< "reprojection_error" << rpError
+				;
+
+			fs.release();
+			std::cout << "Calibration parameters saved to " << outFile << std::endl;
+		}
+		else
+		{
+			std::cerr << "Cannot open output file " << outFile << std::endl;
+		}
+	}
+
+	void calibrateImagesColor()
+	{
+		cv::Size frameSize = cv::Size(1920.0f, 1080.0f);
+		std::vector<std::vector<cv::Point3f>> objectPoints;
+		std::vector<std::vector<cv::Point2f>> imagePoints;
+
+		std::vector<cv::Point3f> vertices;
+
+		for (int h = 0; h < m_boardSize.height; h++)
+		{
+			for (int w = 0; w < m_boardSize.width; w++)
+			{
+				vertices.push_back(cv::Point3f(h * m_squareSize, w * m_squareSize, 0.0f));
+			}
+		}
+
+		cv::Mat cameraMatrix, distCoeffs;
+
+		//using fullsize images for better qaultiy than the live rendering ones
+		for (int i = 0; i < calibrationImagesColor.size(); i++)
+		{
+			std::cout << "calibrating image " << i << std::endl;
+
+			std::vector<cv::Point2f> corners;
+			bool found = cv::findChessboardCorners(calibrationImagesColor[i], cv::Size(7, 5), corners);
+
+			if (found)
+			{
+
+				cv::Mat viewGray;
+				cv::cvtColor(calibrationImagesColor[i], viewGray, CV_BGRA2GRAY);
+
+				cv::cornerSubPix(viewGray, corners, cv::Size(11, 11),
+					cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+
+				imagePoints.push_back(corners);
+				objectPoints.push_back(vertices);
+
+				std::stringstream ss;
+				ss << "./data/calib/color_detected" << nColorCalibrationImageSaved << ".png";
+				std::string fName = ss.str();
+				saveImage(m_colorImage, fName);
+				nColorCalibrationImageSaved++;
+
+			}
+
+		}
+
+		if (imagePoints.empty())
+		{
+			std::cout << "No valid calibration samples. Calibration aborted." << std::endl;
+			exit(EXIT_FAILURE);
+		}
+
+		std::vector<cv::Mat> rVecs, tVecs;
+		cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+		std::cout << "Start calibration using " << imagePoints.size() << " samples...";
+		double rpError = cv::calibrateCamera(
+			objectPoints, imagePoints, frameSize,
+			cameraMatrix, distCoeffs,
+			rVecs, tVecs,
+			// CV_CALIB_USE_INTRINSIC_GUESS | CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_FIX_ASPECT_RATIO
+			CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6,	// set them to 0
+			cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, DBL_EPSILON)
+		);
+		std::cout << "done. Re-projection error: " << rpError << std::endl;
+
+		string outFile = "./data/calib/colorCalibration.txt";
+		saveCalibrationResults(outFile, frameSize, cameraMatrix, distCoeffs, rpError);
+		
+	}
+
+	void calibrateImagesInfra()
+	{
+		cv::Size frameSize = cv::Size(512.0f, 424.0f);
+		std::vector<std::vector<cv::Point3f>> objectPoints;
+		std::vector<std::vector<cv::Point2f>> imagePoints;
+
+		std::vector<cv::Point3f> vertices;
+
+		for (int h = 0; h < m_boardSize.height; h++)
+		{
+			for (int w = 0; w < m_boardSize.width; w++)
+			{
+				vertices.push_back(cv::Point3f(h * m_squareSize, w * m_squareSize, 0.0f));
+			}
+		}
+
+		cv::Mat cameraMatrix, distCoeffs;
+
+		//using fullsize images for better qaultiy than the live rendering ones
+		for (int i = 0; i < calibrationImagesInfra.size(); i++)
+		{
+			std::vector<cv::Point2f> corners;
+			bool found = cv::findChessboardCorners(calibrationImagesInfra[i], cv::Size(5, 7), corners);
+
+			if (found)
+			{
+
+				cv::Mat viewGray;
+				calibrationImagesInfra[i].copyTo(viewGray);
+				//cv::cvtColor(calibrationImagesInfra[i], viewGray, CV_BGRA2GRAY);
+
+				cv::cornerSubPix(viewGray, corners, cv::Size(11, 11),
+					cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+
+				imagePoints.push_back(corners);
+				objectPoints.push_back(vertices);
+				//cv::drawChessboardCorners(viewGray, cv::Size(7,5), cv::Mat(corners), found);
+				//cv::imshow("gr sp", viewGray);
+			}
+
+		}
+
+		if (imagePoints.empty())
+		{
+			std::cerr << "No valid calibration samples. Calibration aborted." << std::endl;
+			//exit(EXIT_FAILURE);
+		}
+
+		std::vector<cv::Mat> rVecs, tVecs;
+		cameraMatrix = cv::Mat::eye(3, 3, CV_64F);
+		std::cout << "Start calibration using " << imagePoints.size() << " samples...";
+		double rpError = cv::calibrateCamera(
+			objectPoints, imagePoints, frameSize,
+			cameraMatrix, distCoeffs,
+			rVecs, tVecs,
+			// CV_CALIB_USE_INTRINSIC_GUESS | CV_CALIB_FIX_PRINCIPAL_POINT | CV_CALIB_FIX_ASPECT_RATIO
+			CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6,	// set them to 0
+			cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, DBL_EPSILON)
+		);
+		std::cout << "done. Re-projection error: " << rpError << std::endl;
+
+		string outFile = "./data/calib/infraCalibration.txt";
+		saveCalibrationResults(outFile, frameSize, cameraMatrix, distCoeffs, rpError);
+
+	}
+
+	std::vector<cv::Point2f> getCheckerBoardPointsColor()
+	{
+		return m_detectedPointsColor;
+	}
+
+	std::vector<cv::Point2f> getCheckerBoardPointsInfra()
+	{
+		return m_detectedPointsInfra;
+	}
+
 	// 
 	cv::Mat getDepthToColorMatrix(std::vector<cv::Point3f> depthPoints, std::vector<cv::Point2f> colorPoints)
 	{
 		cv::Mat depthToColorMatrix = cv::Mat::eye(4,4,CV_32F);
 
-
+		cv::Mat rvec, tvec;
 		// Camera internals
 		cv::Mat dist_coeffs = cv::Mat::zeros(4, 1, cv::DataType<float>::type); // Assuming no lens distortion
 
 		//cout << "Camera Matrix " << endl << camera_matrix << endl;
 		// Output rotation and translation
-		cv::Mat rotation_vector; // Rotation in axis-angle form
-		cv::Mat translation_vector;
+
 
 		// Solve for pose
-		cv::solvePnP(depthPoints, colorPoints, colorCamPams, dist_coeffs, rotation_vector, translation_vector);
+		cv::solvePnP(depthPoints, colorPoints, colorCamPams, dist_coeffs, rvec, tvec);
 
 		cv::Mat rod;
-		cv::Rodrigues(rotation_vector, rod);
+		cv::Rodrigues(rvec, rod);
 
 		//std::cout << rod << std::endl;
 
 		cv::Mat tmp = depthToColorMatrix(cv::Rect(0, 0, 3, 3));
 		rod.copyTo(tmp);
 
-		depthToColorMatrix.at<float>(0, 3) = translation_vector.at<float>(0);
-		depthToColorMatrix.at<float>(1, 3) = translation_vector.at<float>(1);
-		depthToColorMatrix.at<float>(2, 3) = translation_vector.at<float>(2);
+		depthToColorMatrix.at<float>(0, 3) = tvec.at<float>(0);
+		depthToColorMatrix.at<float>(1, 3) = tvec.at<float>(1);
+		depthToColorMatrix.at<float>(2, 3) = tvec.at<float>(2);
+
+		std::cout << depthToColorMatrix << std::endl;
+
 
 		return depthToColorMatrix;
 	}
@@ -110,7 +364,7 @@ public:
 
 		}
 		//cv::aruco::drawDetectedMarkers(outputImage, markerCorners, markerIds);
-		cv::imshow("oC", outputImage);
+		//cv::imshow("oC", outputImage);
 	}
 	void detectMarkersColor(cv::Mat inputImage)
 	{
@@ -149,7 +403,7 @@ public:
 
 		}
 		//cv::aruco::drawDetectedMarkers(outputImage, markerCorners, markerIds);
-		cv::imshow("oI", outputImage);
+		//cv::imshow("oI", outputImage);
 	}
 
 
@@ -257,10 +511,56 @@ public:
 		m_infraCamDist = irCD;
 	}
 
+
+
+	void saveImage(cv::Mat image, string fileName)
+	{
+
+		vector<int> compression_params;
+		compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+		compression_params.push_back(0);
+
+
+		try {
+			cv::imwrite(fileName, image, compression_params);
+			nColorImageSaved++;
+		}
+		catch (runtime_error& ex) {
+			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
+		}
+
+	}
+
+	void saveImage(int type)
+	{
+		if (type == 0) // color image
+		{
+			std::stringstream ss;
+			ss << "./data/calib/color_" << nColorImageSaved << ".png";
+			std::string fName = ss.str();
+			saveImage(m_colorImage, fName);
+
+			saveImage(m_colorImage, fName);
+		}
+
+		if (type == 1) // infra image
+		{
+			std::stringstream ss;
+			ss << "./data/calib/infra_" << nInfraImageSaved << ".png";
+			std::string fName = ss.str();
+			saveImage(m_infraImage, fName);
+
+			saveImage(m_colorImage, fName);
+		}
+	}
+
+
+
 private:
 
 	cv::Ptr<cv::DenseOpticalFlow> m_algorithm;
 	cv::Mat m_colorImage;
+	cv::Mat m_infraImage;
 	//cv::Mat bigFlow;
 	cv::Mat m_grey0;
 	cv::Mat m_grey1;
@@ -270,6 +570,10 @@ private:
 	cv::Mat m_mag, m_magThresh, m_ang;
 	cv::Mat m_hsv_split[3], m_hsv;
 	cv::Mat m_rgb;
+
+	std::vector<cv::Mat> calibrationImagesColor;
+	std::vector<cv::Mat> calibrationImagesInfra;
+
 
 	std::string dictFile = "resources/dodec.yml";
 	aruco::Dictionary markerDict;
@@ -284,6 +588,22 @@ private:
 	cv::Mat m_infraCamPams = cv::Mat::eye(3, 3, CV_32F);
 	cv::Mat m_infraCamDist = cv::Mat(5, 1, CV_32F);
 
+	cv::Mat rotation_vector; // Rotation in axis-angle form
+	cv::Mat translation_vector;
+
+	// x is x coord, y is y coord
+	std::vector<cv::Point2f> m_detectedPointsColor;
+	std::vector<cv::Point2f> m_detectedPointsInfra;
+
+	cv::Size m_boardSize = cv::Size(7, 5);
+	float m_squareSize = 0.036; // 36 mm
+
+
+	int nColorImageSaved = 0;
+	int nInfraImageSaved = 0;
+
+	int nColorCalibrationImageSaved = 0;
+	int nInfraCalibrationImageSaved = 0;
 
 };
 
