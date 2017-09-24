@@ -36,12 +36,27 @@ void kRender::MousePositionCallback(GLFWwindow* window, double positionX, double
 }
 void kRender::MouseButtonCallback(GLFWwindow* window, int button, int action, int mods)
 {
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 1500.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+
+	// the height of the screen at the distance of the image is 2 * halfheight
+	// to go from the middle to the top 
+
+	//m_model_depth = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, halfHeightAtDist - m_depth_height, -zDist));
+
 	if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS)
 	{
 		// m_depthPixelPoints2D.push_back(std::make_pair(m_mouse_pos_x, m_mouse_pos_y));
 		// get correct current offset and scakle for the window
 		int depth_pos_x = m_mouse_pos_x / m_render_scale_width;
 		int depth_pos_y = m_mouse_pos_y / m_render_scale_height;
+
+		std::cout <<" x: " << m_mouse_pos_x << " y: " << m_mouse_pos_y << " xS: " << m_render_scale_width << " yS: " << m_render_scale_height << std::endl;
+		std::cout << ((float)h / 424.0f) * m_mouse_pos_y << std::endl;
+
 
 		if (depth_pos_x < m_depth_width && depth_pos_y < m_depth_height)
 		{
@@ -67,7 +82,7 @@ void kRender::MouseButtonCallback(GLFWwindow* window, int button, int action, in
 		std::cout << m_depthPixelPoints2D.size();
 		for (auto i : m_depthPixelPoints2D)
 		{
-			std::cout << " x: " << i.first << " y: " << i.second << std::endl;
+			//std::cout << " x: " << i.first << " y: " << i.second << std::endl;
 		}
 	}
 	else if (m_depthPixelPoints2D.size() == 0 && action == GLFW_PRESS)
@@ -155,8 +170,8 @@ void kRender::getMouseClickPositionsDepth()
 void kRender::setRegistrationMatrix(glm::mat4 reg)
 {
 	glm::mat4 regTran = glm::transpose(reg);
-	glm::mat4 regInv = glm::inverse(regTran);
-	m_registration_matrix = regInv;
+	//glm::mat4 regInv = glm::inverse(regTran);
+	m_registration_matrix = regTran;
 
 
 
@@ -211,6 +226,9 @@ void kRender::compileAndLinkShader()
 
 		computeProg.compileShader("shaders/compute3D.cs");
 		computeProg.link();
+
+		filterProg.compileShader("shaders/filter3D.cs");
+		filterProg.link();
 
 		v2nProg.compileShader("shaders/vertexTonormal.cs");
 		v2nProg.link();
@@ -445,11 +463,25 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RG32F, m_depth_width, m_depth_height, 0, GL_RG, GL_FLOAT, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
 
+// Texture Filtered Depth Generate
+glGenTextures(1, &m_textureFilteredDepth);
+glActiveTexture(GL_TEXTURE4);
+glBindTexture(GL_TEXTURE_2D, m_textureFilteredDepth); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
+
+
 // Texture Vertex3D
 glGenTextures(1, &m_textureVertex);
 glBindTexture(GL_TEXTURE_2D, m_textureVertex); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
 glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
 glBindImageTexture(4, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+
 
 // Texture Normal3D
 glGenTextures(1, &m_textureNormal);
@@ -535,18 +567,19 @@ void kRender::labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap
 
 }
 
-void kRender::setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag)
+void kRender::setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag)
 {
 	m_showDepthFlag = showDepthFlag;
 	m_showInfraFlag = showInfraFlag;
 	m_showColorFlag = showColorFlag;
 	m_showLightFlag = showLightFlag;
 	m_showPointFlag = showPointFlag;
+	m_showFlowFlag = showFlowFlag;
 }
 
 
 // set up the data buffers for rendering
-void kRender::setBuffersForRendering(float * depthArray, float * infraArray, float * colorArray)
+void kRender::setBuffersForRendering(float * depthArray, float * infraArray, float * colorArray, unsigned char * flowPtr)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
@@ -574,7 +607,12 @@ void kRender::setBuffersForRendering(float * depthArray, float * infraArray, flo
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
 	}
 
-
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, m_textureFlow);
+	if (flowPtr != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
+	}
 
 
 
@@ -584,10 +622,15 @@ void kRender::setDepthImageRenderPosition()
 {
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	float zDist = 1500.0f;
-	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
-	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
-	m_model_depth = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, -halfHeightAtDist, -zDist));
+	//float zDist = 1500.0f;
+	//float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	//float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	float zDist;
+	zDist = ((float)h / 2) / tan(22.5 * M_PI / 180.0f);
+	float halfHeightAtDist = (float)h / 2;
+	float halfWidthAtDistance = (float)w / 2;
+	m_model_depth = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, halfHeightAtDist - m_depth_height, -zDist));
+
 
 }
 
@@ -595,11 +638,22 @@ void kRender::setColorImageRenderPosition()
 {
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	float zDist = 4000.0f;
+	//// if setting z dist
+	float zDist = 3000.0f;
 	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
 	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
-	m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, -halfHeightAtDist, -zDist));
+	//// else if setting size on window
+	//float zDist;
+	//zDist = ((float)h / 2) / tan(22.5 * M_PI / 180.0f);
+	//float halfHeightAtDist = (float)h / 2;
+	//float halfWidthAtDistance = (float)w / 2;
+	//m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, -halfHeightAtDist, -zDist));
+	glm::vec3 scaleVec = glm::vec3(2.f, 2.f, 1.0f);
 
+	m_model_color = glm::scale(glm::mat4(1.0f), scaleVec);
+	m_model_color = glm::translate(m_model_color, glm::vec3(-m_color_width / 2.0f, -m_color_height / 2.0f, -zDist));
+
+	//std::cout << "zDis" << zDist << "w " << w << " h" << h << " ad " << halfWidthAtDistance << std::endl;
 	//m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, 0.0f, -2000.0f));
 }
 
@@ -610,15 +664,26 @@ void kRender::setInfraImageRenderPosition()
 	float zDist = 1500.0f;
 	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
 	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
-	m_model_infra = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, halfHeightAtDist - m_depth_height, -zDist));
+	m_model_infra = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, -halfHeightAtDist, -zDist));
 
+
+}
+
+void kRender::setFlowImageRenderPosition()
+{
+	int w, h;
+	glfwGetFramebufferSize(m_window, &w, &h);
+	float zDist = 1800.0f;
+	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	m_model_flow = glm::translate(glm::mat4(1.0f), glm::vec3(-halfWidthAtDistance, -m_depth_height / 2.0f, -zDist));
 }
 
 void kRender::setPointCloudRenderPosition(float modelZ)
 {
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	float zDist = zDist + modelZ;
+	float zDist = 0000.0f + modelZ;
 	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
 	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
 	m_model_pointcloud = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, zDist));
@@ -628,7 +693,7 @@ void kRender::setPointCloudRenderPosition(float modelZ)
 	flipYZ[1][1] = -1.0f;
 	flipYZ[2][2] = -1.0f;
 
-	m_model_pointcloud = flipYZ * m_model_pointcloud;
+	m_model_pointcloud = m_registration_matrix * flipYZ * m_model_pointcloud;
 
 }
 
@@ -719,6 +784,18 @@ void kRender::renderLiveVideoWindow()
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	}
 
+	//FOR FLOW
+	if (m_showFlowFlag)
+	{
+		MVP = m_projection * m_view * m_model_flow;
+		glUniform1f(m_irBrightnessID, m_ir_brightness);
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID); // use the depth vertex subroutine
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_FlowSubroutineID); // use the infra fragment subroutine
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		//draw infra tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
 
 	// FOR CALIBRATION POINTS
 	// INFRA
@@ -819,6 +896,22 @@ void kRender::renderFlow(unsigned char* flowPtr)
 
 }
 
+void kRender::filterDepth()
+{
+	// bind image textures 
+	glBindImageTexture(0, m_textureDepth, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+	glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+		
+	filterProg.use();
+
+	int xWidth = divup(m_depth_width, 32);
+	int yWidth = divup(m_depth_height, 32);
+
+	glDispatchCompute(xWidth, yWidth, 1);
+	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+}
+
+
 
 void kRender::computeDepthToVertex()
 {
@@ -826,7 +919,7 @@ void kRender::computeDepthToVertex()
 	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams);
 
 	// bind image textures 
-	glBindImageTexture(1, m_textureDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+	glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
 	glBindImageTexture(2, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 	computeProg.use();
@@ -892,19 +985,15 @@ void kRender::renderPointCloud()
 		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
 
 		// draw points
-		glPointSize(2.0f);
+		glPointSize(3.0f);
 		glBindVertexArray(m_VAO_Pointcloud);
 		glDrawArrays(GL_POINTS, 0, 512 * 424);
 		glBindVertexArray(0);
 	}
 }
 
-void kRender::drawPoints()
+void kRender::getDepthPoints3D()
 {
-
-
-
-
 	////// This works for grabbing the buffer from the compute3D shader and copying to host memory
 	std::vector<float> PC;
 	PC.resize(512 * 424 * 4);
@@ -915,7 +1004,7 @@ void kRender::drawPoints()
 	memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
 	//// int oneDindex = (row * length_of_row) + column; // Indexes
 	glUnmapBuffer(GL_ARRAY_BUFFER);
-	
+
 	//std::vector<cv::Point3f> dPoints;
 
 
@@ -947,133 +1036,186 @@ void kRender::drawPoints()
 			m_depthPixelPoints2D.pop_back();
 		}
 	}
-	//memcpy_s(&m_depthPointsFromBuffer[0], 4 * sizeof(float), &PC[((424 * 100) + 120 ) * 4], 4 * sizeof(float));
-	//memcpy_s(&m_depthPointsFromBuffer[4], 4 * sizeof(float), &PC[((424 * 120) + 200 ) * 4], 4 * sizeof(float));
-	//memcpy_s(&m_depthPointsFromBuffer[8], 4 * sizeof(float), &PC[((424 * 180 ) + 280) * 4], 4 * sizeof(float));
-	//memcpy_s(&m_depthPointsFromBuffer[12], 4 * sizeof(float), &PC[((424 * 140 ) + 340) * 4], 4 * sizeof(float));
-
-
-
-	if (m_export_ply)
-	{
-		writePLYFloat(PC, NC, "./outPC.ply");
-		setExportPly(false);
-	}
-
-	/// This was to see if the rvec and tvec from solvepnp appear to get the same color coords as when checking from the depth to color mapping table
-	//if (m_depthPixelPoints2D.size() > 4)
-	//{
-	//	cv::Mat imagePointsMat;
-	//	cv::Mat colorCamPams = cv::Mat::eye(3, 3, CV_32F);
-	//	cv::Mat colorCamDist = cv::Mat(4, 1, CV_32F);
-	//	colorCamPams.at<float>(0, 0) = 992.2276f;
-	//	colorCamPams.at<float>(1, 1) = 990.6481f;
-	//	colorCamPams.at<float>(0, 2) = (1920.0f - 940.4056f);
-	//	colorCamPams.at<float>(1, 2) = (1080.0f - 546.1401f);
-
-	//	colorCamDist.at<float>(0, 0) = 0.002308769f;
-	//	colorCamDist.at<float>(1, 0) = -0.03766959f;
-	//	colorCamDist.at<float>(2, 0) = -0.0063f;
-	//	colorCamDist.at<float>(3, 0) = 0.0036f;
-
-	//	cv::projectPoints(dPoints, rotation_vector, translation_vector, colorCamPams, colorCamDist, imagePointsMat);
-
-	//	std::cout << imagePointsMat << std::endl;
-	//}
-
-
-
-	//
-
-
-
-	//// Camera matrix
-	//glm::mat4 View = glm::lookAt(
-	//	glm::vec3(0, 0, 100), // Camera is at (4,3,3), in World Space
-	//	glm::vec3(0, 0, 0), // and looks at the origin
-	//	glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
-	//);
-
-
-	glm::mat4 View0 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-	glm::mat4 View =  m_registration_matrix * View0;
-
-	glm::mat4 model = glm::mat4(1.0f);
-	// flip axis y and z
-
-
-	//View = View * flipYZ;
-	//model = glm::rotate(model, 180.0f, glm::vec3(0, 1, 0));
-
-	glm::mat4 Projection = glm::perspective(glm::radians(75.0f), 1920.0f / 1080.0f, -1.0f, 100.0f); // 1920.0f/1080.0f    512.0f / 424.0f //GLM USES RADIANSSO CONVERT!!!
-	//glm::mat4 Projection = glm::ortho(-800.0f, 800.0f, -800.0f, 800.0f, -1.0f, 2500.0f);
-	glm::mat4 MV = View * model;
-	glm::mat4 MVP = Projection * View * model;
-	glm::mat4 VP = Projection * View;
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-
-
-
-
-
-
-
-
-
-
-	// convert depth points to vertex 3D
-
-
-
-
-
 }
 
 
 
-void kRender::drawLightModel()
-{
-	glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
-	glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+//
+//void kRender::drawPoints()
+//{
+//
+//
+//
+//
+//	////// This works for grabbing the buffer from the compute3D shader and copying to host memory
+//	std::vector<float> PC;
+//	PC.resize(512 * 424 * 4);
+//	std::vector<float> NC;
+//	NC.resize(512 * 424 * 4);
+//	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud);
+//	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+//	memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
+//	//// int oneDindex = (row * length_of_row) + column; // Indexes
+//	glUnmapBuffer(GL_ARRAY_BUFFER);
+//	
+//	//std::vector<cv::Point3f> dPoints;
+//
+//
+//	int ind = 0;
+//	int numBadPixel = 0;
+//	if (m_depthPixelPoints2D.size() > 0)
+//	{
+//		for (auto i : m_depthPixelPoints2D)
+//		{
+//			int index1D = ((m_depth_width * i.second) + i.first);
+//			memcpy_s(&m_depthPointsFromBuffer[ind], 4 * sizeof(float), &PC[index1D * 4], 4 * sizeof(float));
+//			m_depthPointsFromBuffer[ind + 3] = index1D;
+//			if (m_depthPointsFromBuffer[ind] == 0)
+//			{
+//				//invalid depth point, pop back one of the mouse clicks
+//				numBadPixel++;
+//				std::cout << "invalid depth point, pop back one of the mouse clicks " << std::endl;
+//			}
+//			else
+//			{
+//				//dPoints.push_back(cv::Point3f(PC[index1D * 4], PC[(index1D * 4) + 1],PC[(index1D * 4) + 2]));
+//
+//				ind += 4;
+//			}
+//		}
+//
+//		for (int j = 0; j < numBadPixel; j++)
+//		{
+//			m_depthPixelPoints2D.pop_back();
+//		}
+//	}
+//	//memcpy_s(&m_depthPointsFromBuffer[0], 4 * sizeof(float), &PC[((424 * 100) + 120 ) * 4], 4 * sizeof(float));
+//	//memcpy_s(&m_depthPointsFromBuffer[4], 4 * sizeof(float), &PC[((424 * 120) + 200 ) * 4], 4 * sizeof(float));
+//	//memcpy_s(&m_depthPointsFromBuffer[8], 4 * sizeof(float), &PC[((424 * 180 ) + 280) * 4], 4 * sizeof(float));
+//	//memcpy_s(&m_depthPointsFromBuffer[12], 4 * sizeof(float), &PC[((424 * 140 ) + 340) * 4], 4 * sizeof(float));
+//
+//
+//
+//	if (m_export_ply)
+//	{
+//		writePLYFloat(PC, NC, "./outPC.ply");
+//		setExportPly(false);
+//	}
+//
+//	/// This was to see if the rvec and tvec from solvepnp appear to get the same color coords as when checking from the depth to color mapping table
+//	//if (m_depthPixelPoints2D.size() > 4)
+//	//{
+//	//	cv::Mat imagePointsMat;
+//	//	cv::Mat colorCamPams = cv::Mat::eye(3, 3, CV_32F);
+//	//	cv::Mat colorCamDist = cv::Mat(4, 1, CV_32F);
+//	//	colorCamPams.at<float>(0, 0) = 992.2276f;
+//	//	colorCamPams.at<float>(1, 1) = 990.6481f;
+//	//	colorCamPams.at<float>(0, 2) = (1920.0f - 940.4056f);
+//	//	colorCamPams.at<float>(1, 2) = (1080.0f - 546.1401f);
+//
+//	//	colorCamDist.at<float>(0, 0) = 0.002308769f;
+//	//	colorCamDist.at<float>(1, 0) = -0.03766959f;
+//	//	colorCamDist.at<float>(2, 0) = -0.0063f;
+//	//	colorCamDist.at<float>(3, 0) = 0.0036f;
+//
+//	//	cv::projectPoints(dPoints, rotation_vector, translation_vector, colorCamPams, colorCamDist, imagePointsMat);
+//
+//	//	std::cout << imagePointsMat << std::endl;
+//	//}
+//
+//
+//
+//	//
+//
+//
+//
+//	//// Camera matrix
+//	//glm::mat4 View = glm::lookAt(
+//	//	glm::vec3(0, 0, 100), // Camera is at (4,3,3), in World Space
+//	//	glm::vec3(0, 0, 0), // and looks at the origin
+//	//	glm::vec3(0, 1, 0)  // Head is up (set to 0,-1,0 to look upside-down)
+//	//);
+//
+//
+//	glm::mat4 View0 = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+//	glm::mat4 View =  m_registration_matrix * View0;
+//
+//	glm::mat4 model = glm::mat4(1.0f);
+//	// flip axis y and z
+//
+//
+//	//View = View * flipYZ;
+//	//model = glm::rotate(model, 180.0f, glm::vec3(0, 1, 0));
+//
+//	glm::mat4 Projection = glm::perspective(glm::radians(75.0f), 1920.0f / 1080.0f, -1.0f, 100.0f); // 1920.0f/1080.0f    512.0f / 424.0f //GLM USES RADIANSSO CONVERT!!!
+//	//glm::mat4 Projection = glm::ortho(-800.0f, 800.0f, -800.0f, 800.0f, -1.0f, 2500.0f);
+//	glm::mat4 MV = View * model;
+//	glm::mat4 MVP = Projection * View * model;
+//	glm::mat4 VP = Projection * View;
+//	int w, h;
+//	glfwGetFramebufferSize(m_window, &w, &h);
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//
+//	// convert depth points to vertex 3D
+//
+//
+//
+//
+//
+//}
 
-	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-	glm::mat4 model = glm::mat4(1.0f);
-	//model = glm::rotate(model, -1.0f, glm::vec3(0, 1, 0));
 
-
-	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 4500.0f);
-	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
-	glm::mat4 MVP = Projection * View * model;
-	int w, h;
-	glfwGetFramebufferSize(m_window, &w, &h);
-	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
-
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-	renderProg.use();
-
-	// Bind Textures using texture units
-	glActiveTexture(GL_TEXTURE4);
-	glBindTexture(GL_TEXTURE_2D, m_textureVertex);
-	glActiveTexture(GL_TEXTURE5);
-	glBindTexture(GL_TEXTURE_2D, m_textureNormal);
-
-	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
-
-	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
-	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
-
-	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
-
-	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
-
-	glBindVertexArray(m_VAO);
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-	glBindVertexArray(0);
-
-}
+//
+//void kRender::drawLightModel()
+//{
+//	glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
+//	glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
+//
+//	glm::mat4 View = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+//	glm::mat4 model = glm::mat4(1.0f);
+//	//model = glm::rotate(model, -1.0f, glm::vec3(0, 1, 0));
+//
+//
+//	//glm::mat4 Projection = glm::perspective(glm::radians(60.0f), 1.0f, 0.1f, 4500.0f);
+//	glm::mat4 Projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f, -100.0f, 100.0f);
+//	glm::mat4 MVP = Projection * View * model;
+//	int w, h;
+//	glfwGetFramebufferSize(m_window, &w, &h);
+//	glViewport(0, h - m_depth_height * m_render_scale_height, m_depth_width * m_render_scale_width, m_depth_height * m_render_scale_height);
+//
+//	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+//	renderProg.use();
+//
+//	// Bind Textures using texture units
+//	glActiveTexture(GL_TEXTURE4);
+//	glBindTexture(GL_TEXTURE_2D, m_textureVertex);
+//	glActiveTexture(GL_TEXTURE5);
+//	glBindTexture(GL_TEXTURE_2D, m_textureNormal);
+//
+//	glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
+//	glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
+//
+//	glUniform3fv(m_lightID, 1, glm::value_ptr(light));
+//	glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
+//
+//	glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+//
+//	glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+//
+//	glBindVertexArray(m_VAO);
+//	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+//
+//	glBindVertexArray(0);
+//
+//}
 
 
 

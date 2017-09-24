@@ -23,7 +23,8 @@ Freenect2Camera kcamera;
 
 openCVStuff OCVStuff;
 
-cv::Mat flow;
+cv::Mat flow;// = cv::Mat(424, 512, CV_8UC3);
+//cv::Mat tFlow;
 
 
 
@@ -63,6 +64,8 @@ bool showColorFlag = false;
 bool showLightFlag = false;
 bool showPointFlag = false;
 
+bool showFlowFlag = false;
+
 float irBrightness = 10000.0f;
 float xRot = 0.0f;
 float zRot = 0.0f;
@@ -70,6 +73,15 @@ float yRot = 0.0f;
 float xTran = 0.0f;
 float yTran = 0.0f;
 float zTran = 2000.0f;
+void resetSliders() 
+{
+	xRot = 0.0f;
+	zRot = 0.0f;
+	yRot = 0.0f;
+	xTran = 0.0f;
+	yTran = 0.0f;
+	zTran = 2000.0f;
+}
 
 float zModelPC_offset = 4000.0f;
 

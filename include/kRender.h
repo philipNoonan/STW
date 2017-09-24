@@ -110,6 +110,8 @@ class kRender
 			return m_depthPointsFromBuffer;
 		}
 
+		void getDepthPoints3D();
+
 		void getMouseClickPositionsDepth();
 
 		void anchorMW(std::pair<int, int> anchor)
@@ -138,11 +140,12 @@ class kRender
 		void setupComputeFBO();
 
 		// The correcter way 
-		void setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag);
-		void setBuffersForRendering(float * depthArray, float * colorArray, float * infraArray);
+		void setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag);
+		void setBuffersForRendering(float * depthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
 		void setDepthImageRenderPosition();
 		void setColorImageRenderPosition();
 		void setInfraImageRenderPosition();
+		void setFlowImageRenderPosition();
 		void setPointCloudRenderPosition(float modelZ);
 		void setLightModelRenderPosition();
 		void setViewMatrix(float xRot, float yRot, float zRot, float xTran, float yTran, float zTran);
@@ -194,6 +197,7 @@ class kRender
 		void setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra);
 
 		// compute shader time
+		void filterDepth();
 		void computeDepthToVertex();
 		void computeVertexToNormal();
 		void renderPointCloud();
@@ -204,6 +208,7 @@ private:
 
 	GLSLProgram renderProg;
 	GLSLProgram computeProg;
+	GLSLProgram filterProg;
 	GLSLProgram v2nProg;
 
 	GLFWwindow * m_window;
@@ -261,6 +266,7 @@ private:
 
 	//textures
 	GLuint m_textureDepth;
+	GLuint m_textureFilteredDepth;
 	GLuint m_textureInfra;
 	GLuint m_textureColor;
 	GLuint m_textureFlow;
@@ -348,15 +354,16 @@ private:
 	glm::mat4 m_model_depth = glm::mat4(1.0);
 	glm::mat4 m_model_color = glm::mat4(1.0);
 	glm::mat4 m_model_infra = glm::mat4(1.0);
+	glm::mat4 m_model_flow = glm::mat4(1.0f);
 	glm::mat4 m_model_pointcloud = glm::mat4(1.0f);
 	glm::mat4 m_model_lightmodel = glm::mat4(1.0f);
 	glm::mat4 m_view = glm::mat4(1.0f);
-	glm::mat4 m_projection = glm::perspective(glm::radians(45.0f), 1920.0f / 1080.0f, 0.1f, 3000.0f); // some default matrix
+	glm::mat4 m_projection = glm::perspective(glm::radians(45.0f), 1.0f, 0.1f, 3000.0f); // some default matrix
 
 	bool m_showDepthFlag = false;
 	bool m_showInfraFlag = false;
 	bool m_showColorFlag = false;
 	bool m_showLightFlag = false;
 	bool m_showPointFlag = false;
-
+	bool m_showFlowFlag = false;
 };

@@ -33,6 +33,9 @@ public:
 			m_grey1.copyTo(m_grey0);
 		}
 
+		//cv::imshow("g0", m_grey0);
+		//cv::imshow("g1", m_grey1);
+
 		m_algorithm->calc(m_grey0, m_grey1, m_flow);
 
 		
@@ -411,32 +414,75 @@ public:
 	void displayFlow()
 	{
 		cv::split(m_flow, m_flow_uv);
-		cv::multiply(m_flow_uv[1], -1, m_flow_uv[1]);
+		cv::multiply(m_flow_uv[1], 1, m_flow_uv[1]);
 		cv::cartToPolar(m_flow_uv[0], m_flow_uv[1], m_mag, m_ang, true);
 
-		cv::threshold(m_mag, m_magThresh, 0, 255, CV_THRESH_TOZERO);
-		cv::normalize(m_magThresh, m_magThresh, 0, 1, cv::NORM_MINMAX);
+		cv::Mat mag = cv::Mat(424, 512, CV_32FC1);
+		cv::Mat ang = cv::Mat(424, 512, CV_32FC1);
+
+		int angInDegree = 1; // get ang in degrees
+
+		for (int i = 0; i < 424; i++)
+		{
+			for (int j = 0; j < 512; j++)
+			{
+				float x = m_flow_uv[0].at<float>(i, j);
+				float y = m_flow_uv[1].at<float>(i, j);
+				float x2 = x * x;
+				float y2 = y * y;
+				
+				mag.at<float>(i, j) = sqrt(x2 + y2);
+				
+				float cartToPolar;
+
+				float tmp = y >= 0 ? 0 : CV_PI * 2;
+				tmp = x < 0 ? CV_PI : tmp;
+
+				float tmp1 = y >= 0 ? CV_PI*0.5 : CV_PI*1.5;
+				cartToPolar = y2 <= x2 ? x*y / (x2 + 0.28f*y2 + (float)DBL_EPSILON) + tmp :
+					tmp1 - x*y / (y2 + 0.28f*x2 + (float)DBL_EPSILON);
+
+				cartToPolar = angInDegree == 0 ? cartToPolar : cartToPolar * (float)(180 / CV_PI);
+
+				ang.at<float>(i, j) = cartToPolar;
+			}
+		}
+
+		// we are good so far
+		cv::imshow("diff of mag", 1000.0f * (m_mag - mag));
+		// cv one outputs in degrees
+		cv::imshow("diff of ang", (m_ang - ang) / 1000.0f);
+
+
+
+
+		//cv::threshold(m_mag, m_magThresh, 0, 255, CV_THRESH_TOZERO);
+		cv::normalize(m_mag, m_mag, 0, 1, cv::NORM_MINMAX);
 
 		m_hsv_split[0] = m_ang;
-		m_hsv_split[1] = m_magThresh;
+		m_hsv_split[1] = m_mag;
 		m_hsv_split[2] = cv::Mat::ones(m_ang.size(), m_ang.type());
 
 		cv::merge(m_hsv_split, 3, m_hsv);
-		cv::cvtColor(m_hsv, m_rgb, cv::COLOR_HSV2BGR);
+		cv::cvtColor(m_hsv, m_rgb, cv::COLOR_HSV2RGB);
 		//cv::imshow("g0", m_grey0);
 		//cv::imshow("g1", m_grey1);
 		cv::imshow("diff", (m_grey0 - m_grey1) * 10);
 		cv::imshow("flow1", m_rgb);
 	}
 
-
-	void setCurrentFrame(cv::Mat grey1)
+	cv::Mat getRGBFlow()
 	{
-		m_grey1 = grey1;
+		return m_rgb;
+	}
+
+	void setCurrentFrame()
+	{
+		m_infraImage.copyTo(m_grey1);
 	}
 	void setPreviousFrame(cv::Mat grey0)
 	{
-		m_grey0 = grey0;
+		grey0.copyTo(m_grey0);
 	}
 	void swapFrames()
 	{
@@ -569,7 +615,7 @@ private:
 	cv::Mat m_flow_uv[2];
 	cv::Mat m_mag, m_magThresh, m_ang;
 	cv::Mat m_hsv_split[3], m_hsv;
-	cv::Mat m_rgb;
+	cv::Mat m_rgb = cv::Mat(424,512, CV_8UC3);
 
 	std::vector<cv::Mat> calibrationImagesColor;
 	std::vector<cv::Mat> calibrationImagesInfra;
