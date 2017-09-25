@@ -58,7 +58,7 @@ public:
 
 	void setInfraMat(cv::Mat ir)
 	{
-		m_infraImage = ir;
+		ir.copyTo(m_infraImage);
 	}
 
 	void resetColorPoints()
@@ -81,7 +81,7 @@ public:
 		cv::pyrDown(pDownCol0, pDownCol1);
 
 		std::vector<cv::Point2f> pDownDetectedPoints;
-		bool found = findChessboardCorners(pDownCol1, cv::Size(5, 7), pDownDetectedPoints);
+		bool found = findChessboardCorners(pDownCol1, cv::Size(7, 5), pDownDetectedPoints);
 		m_detectedPointsColor.resize(pDownDetectedPoints.size());
 		for (int i = 0; i < pDownDetectedPoints.size(); i++)
 		{
@@ -90,7 +90,7 @@ public:
 
 		}
 		// and ir image
-		findChessboardCorners(m_infraImage, cv::Size(5, 7), m_detectedPointsInfra);
+		findChessboardCorners(m_infraImage, cv::Size(7, 5), m_detectedPointsInfra);
 
 		//cv::drawChessboardCorners(m_colorImage, cv::Size(5, 7), m_detectedPointsColor, found);
 		//cv::imshow("irss", m_colorImage);
@@ -106,9 +106,10 @@ public:
 		ss << "./data/calib/color_" << nColorImageSaved << ".png";
 		std::string fName = ss.str();
 		saveImage(m_colorImage, fName);
-
 		// add image to vector of cv::Mat
 		calibrationImagesColor.push_back(m_colorImage);
+		nColorImageSaved++;
+
 
 
 	}
@@ -119,9 +120,10 @@ public:
 		ss << "./data/calib/infra_" << nInfraImageSaved << ".png";
 		std::string fName = ss.str();
 		saveImage(m_infraImage, fName);
-
-		calibrationImagesInfra.push_back(m_infraImage);
-
+		cv::Mat tMat;
+		m_infraImage.copyTo(tMat);
+		calibrationImagesInfra.push_back(tMat);
+		nInfraImageSaved++;
 
 	}
 
@@ -164,6 +166,8 @@ public:
 		}
 
 		cv::Mat cameraMatrix, distCoeffs;
+
+		std::cout << "calibrating " << calibrationImagesColor.size() << " RGB images " << std::endl;
 
 		//using fullsize images for better qaultiy than the live rendering ones
 		for (int i = 0; i < calibrationImagesColor.size(); i++)
@@ -238,10 +242,12 @@ public:
 		cv::Mat cameraMatrix, distCoeffs;
 
 		//using fullsize images for better qaultiy than the live rendering ones
+		std::cout << "calibrating " << calibrationImagesInfra.size() << " IR images " << std::endl;
 		for (int i = 0; i < calibrationImagesInfra.size(); i++)
 		{
 			std::vector<cv::Point2f> corners;
-			bool found = cv::findChessboardCorners(calibrationImagesInfra[i], cv::Size(5, 7), corners);
+			bool found = cv::findChessboardCorners(calibrationImagesInfra[i], cv::Size(7, 5), corners);
+			std::cout << "calibrating image " << i << std::endl;
 
 			if (found)
 			{
@@ -255,8 +261,16 @@ public:
 
 				imagePoints.push_back(corners);
 				objectPoints.push_back(vertices);
-				//cv::drawChessboardCorners(viewGray, cv::Size(7,5), cv::Mat(corners), found);
-				//cv::imshow("gr sp", viewGray);
+
+				cv::drawChessboardCorners(viewGray, cv::Size(7, 5), corners, found);
+
+
+				std::stringstream ss;
+				ss << "./data/calib/infra_detected" << nInfraCalibrationImageSaved << ".png";
+				std::string fName = ss.str();
+				saveImage(viewGray, fName);
+				nInfraCalibrationImageSaved++;
+
 			}
 
 		}
@@ -569,7 +583,6 @@ public:
 
 		try {
 			cv::imwrite(fileName, image, compression_params);
-			nColorImageSaved++;
 		}
 		catch (runtime_error& ex) {
 			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
@@ -581,21 +594,21 @@ public:
 	{
 		if (type == 0) // color image
 		{
+			nColorImageSaved++;
 			std::stringstream ss;
 			ss << "./data/calib/color_" << nColorImageSaved << ".png";
 			std::string fName = ss.str();
 			saveImage(m_colorImage, fName);
-
 			saveImage(m_colorImage, fName);
 		}
 
 		if (type == 1) // infra image
 		{
+			nInfraImageSaved++;
 			std::stringstream ss;
 			ss << "./data/calib/infra_" << nInfraImageSaved << ".png";
 			std::string fName = ss.str();
 			saveImage(m_infraImage, fName);
-
 			saveImage(m_colorImage, fName);
 		}
 	}

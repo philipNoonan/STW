@@ -59,6 +59,7 @@ std::vector<cv::Point2f> colorPoints;
 cv::Mat newColor;
 
 bool showDepthFlag = false;
+bool showBigDepthFlag = false;
 bool showInfraFlag = false;
 bool showColorFlag = false;
 bool showLightFlag = false;
@@ -66,7 +67,13 @@ bool showPointFlag = false;
 
 bool showFlowFlag = false;
 
-float irBrightness = 10000.0f;
+float irBrightness = 1.0;
+float irLow = 0.0f;
+float irHigh = 65536.0f;
+float vertFov = 35.0f;
+
+
+
 float xRot = 0.0f;
 float zRot = 0.0f;
 float yRot = 0.0f;
@@ -83,7 +90,7 @@ void resetSliders()
 	zTran = 2000.0f;
 }
 
-float zModelPC_offset = 4000.0f;
+float zModelPC_offset = 0.0f;
 
 cv::Mat infraGrey;
 

@@ -99,18 +99,26 @@ int main(int, char**)
 
 		//krender.requestShaderInfo();
 
-		krender.setCameraParams(glm::vec4(kcamera.fx(), kcamera.fx(), kcamera.ppx(), kcamera.ppy())); // FIX ME
+		krender.setCameraParams(glm::vec4(kcamera.fx(), kcamera.fx(), kcamera.ppx(), kcamera.ppy()), glm::vec4(kcamera.fx_col(), kcamera.fx_col(), kcamera.ppx_col(), kcamera.ppy_col())); // FIX ME
 
 		if (kcamera.ready())
 		{
-			kcamera.frames(colorArray, depthArray, infraredArray, NULL, colorDepthMap);
+			kcamera.frames(colorArray, depthArray, infraredArray, bigDepthArray, colorDepthMap);
 
 			newColor = cv::Mat(1080, 1920, CV_8UC4, colorArray);
 
 
 			cv::Mat infra = cv::Mat(depthHeight, depthWidth, CV_32FC1, infraredArray);
 			
-			infra.convertTo(infraGrey, CV_8UC1, 1.0f / (irBrightness / 100.0f));
+			// cv::Mat mask = infra >= 65000;
+			// infra.setTo(0, mask);
+			// cv::minMaxLoc(infra, &min, &max); // this is always 0 and 65536
+			cv::Mat scaled = ((infra - irLow) / irHigh);
+			// std::cout << min << " " << max << std::endl;
+			//cv::imshow("scl", scaled);
+
+
+			scaled.convertTo(infraGrey, CV_8UC1, 255.0f);
 			//cv::imshow("irssdf", infraGrey);
 
 
@@ -120,7 +128,7 @@ int main(int, char**)
 
 
 
-			OCVStuff.detectMarkersColor(newColor);
+			//OCVStuff.detectMarkersColor(newColor);
 
 			//OCVStuff.getDepthToColorMatrix();
 
@@ -331,8 +339,8 @@ int main(int, char**)
 				ImGui::Separator();
 				ImGui::Text("View Options");
 
-				if (ImGui::Button("Show Depth")) showDepthFlag ^= 1; ImGui::SameLine();	ImGui::Checkbox("", &showDepthFlag); ImGui::SameLine(); if (ImGui::Button("Show Flow")) showFlowFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showFlowFlag);
-				if (ImGui::Button("Show Infra")) showInfraFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showInfraFlag);
+				if (ImGui::Button("Show Depth")) showDepthFlag ^= 1; ImGui::SameLine();	ImGui::Checkbox("", &showDepthFlag); ImGui::SameLine(); if (ImGui::Button("Show Big Depth")) showBigDepthFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showBigDepthFlag);
+				if (ImGui::Button("Show Infra")) showInfraFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showInfraFlag); ImGui::SameLine(); if (ImGui::Button("Show Flow")) showFlowFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showFlowFlag);
 				if (ImGui::Button("Show Color")) showColorFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showColorFlag);
 				if (ImGui::Button("Show Light")) showLightFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showLightFlag);
 				if (ImGui::Button("Show Point")) showPointFlag ^= 1; ImGui::SameLine(); ImGui::Checkbox("", &showPointFlag);
@@ -352,6 +360,10 @@ int main(int, char**)
 
 				ImGui::Separator();
 				ImGui::Text("View Transforms");
+				ImGui::SliderFloat("vFOV", &vertFov, 1.0f, 90.0f);
+				krender.setFov(vertFov);
+
+
 				ImGui::SliderFloat("xRot", &xRot, 0.0f, 90.0f);
 				ImGui::SliderFloat("yRot", &yRot, 0.0f, 90.0f);
 				ImGui::SliderFloat("zRot", &zRot, 0.0f, 90.0f);
@@ -368,9 +380,18 @@ int main(int, char**)
 
 				//cv::imshow("irg", infraGrey);
 
-				if (ImGui::Button("Save Infra")) OCVStuff.saveImage(1); ImGui::SameLine(); // saving infra image (flag == 1)
-				ImGui::SliderFloat("IR", &irBrightness, 0000.0f, 10000.0f);
-				krender.setIrBrightness(irBrightness);
+				if (ImGui::Button("Save Infra")) OCVStuff.saveImage(1);  // saving infra image (flag == 1)
+				ImGui::SliderFloat("irLow", &irLow, 0.0f, 65536.0f - 255.0f);
+				if (irLow > (irHigh - 255.0f))
+				{
+					irHigh = irLow + 255.0f;
+				}
+				ImGui::SliderFloat("irHigh", &irHigh, 255.0f, 65536.0f);
+				if (irHigh < (irLow + 255.0f))
+				{
+					irLow = irHigh - 255.0f;
+				}
+				krender.setIrBrightness(irLow, irHigh);
 
 				ImGui::Separator();
 				ImGui::Text("Calibration Misc.");
@@ -413,14 +434,14 @@ int main(int, char**)
 			{
 				krender.setColorDepthMapping(colorDepthMap);
 
-				krender.setRenderingOptions(showDepthFlag, showInfraFlag, showColorFlag, showLightFlag, showPointFlag, showFlowFlag);
+				krender.setRenderingOptions(showDepthFlag, showBigDepthFlag, showInfraFlag, showColorFlag, showLightFlag, showPointFlag, showFlowFlag);
 
 
 
-				krender.setBuffersForRendering(depthArray, infraredArray, colorArray, flow.ptr());
+				krender.setBuffersForRendering(depthArray, bigDepthArray, infraredArray, colorArray, flow.ptr());
 				krender.setDepthImageRenderPosition();
 				krender.setInfraImageRenderPosition();
-				krender.setColorImageRenderPosition();
+				krender.setColorImageRenderPosition(vertFov);
 				krender.setFlowImageRenderPosition();
 				krender.setPointCloudRenderPosition(zModelPC_offset);
 				krender.setLightModelRenderPosition();
@@ -430,18 +451,18 @@ int main(int, char**)
 
 
 				// compute time
-				krender.filterDepth();
-				krender.computeDepthToVertex();
-				krender.computeVertexToNormal();
-				krender.renderPointCloud();
+				krender.filterDepth(showBigDepthFlag);
+				krender.computeDepthToVertex(showBigDepthFlag);
+				krender.computeVertexToNormal(showBigDepthFlag);
+				krender.renderPointCloud(showBigDepthFlag);
 
 			}
 			else 
 			{
 				krender.setColorDepthMapping(colorDepthMap);
-				krender.setBuffersForRendering(NULL, NULL, NULL, NULL);
+				krender.setBuffersForRendering(NULL, NULL, NULL, NULL, NULL);
 				krender.renderLiveVideoWindow();
-				krender.renderPointCloud();
+				krender.renderPointCloud(showBigDepthFlag);
 
 
 

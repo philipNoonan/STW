@@ -249,9 +249,11 @@ void kRender::setLocations()
 	m_ambientID = glGetUniformLocation(renderProg.getHandle(), "ambient");
 	m_lightID = glGetUniformLocation(renderProg.getHandle(), "light");
 
-	m_irBrightnessID = glGetUniformLocation(renderProg.getHandle(), "irBrightness");
+	m_irLowID = glGetUniformLocation(renderProg.getHandle(), "irLow");
+	m_irHighID = glGetUniformLocation(renderProg.getHandle(), "irHigh");
 
 	m_DepthSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromDepth");
+	m_BigDepthSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromBigDepth");
 	m_InfraSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromInfra");
 	m_ColorSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromColor");
 	m_FlowSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromFlow");
@@ -270,6 +272,9 @@ void kRender::setLocations()
 
 
 	m_invkID = glGetUniformLocation(computeProg.getHandle(), "invK");
+	m_camPamsID = glGetUniformLocation(computeProg.getHandle(), "camPams");
+
+	
 
 
 }
@@ -319,6 +324,27 @@ void kRender::setVertPositions()
 
 	m_indices = indices;
 
+	std::vector<float>  verticiesBigDepthPointcloud;
+	verticiesBigDepthPointcloud.resize((m_color_height + 2)* m_color_width * 4); // x,y,z, values for the projected 3D pointcloud
+	m_verticesBigDepthPointcloud = verticiesBigDepthPointcloud;
+
+	std::vector<float>  colorBigDepthMapping;
+	colorBigDepthMapping.resize((m_color_height + 2) * m_color_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
+	m_colorBigDepthMapping = colorBigDepthMapping;
+
+	int j = 0;
+	for (int i = 0; i < 1920 * 1080; i++, j+=2)
+	{
+		int yCoord = i / m_color_width;
+		int xCoord = i % m_color_width;
+		m_colorBigDepthMapping[j] = ((float)xCoord) / (float)m_color_width;
+		m_colorBigDepthMapping[j + 1] = (1080.0f - (float)yCoord) / (float)m_color_height;
+		//std::cout << xCoord << " " << yCoord << " " << i << " " << j << std::endl;
+
+	}
+	//m_colorDepthMapping[j] = ((float)xCoord) / (float)m_color_width;
+	//m_colorDepthMapping[j + 1] = (1080.0f - (float)yCoord) / (float)m_color_height;
+
 	std::vector<float>  verticiesPointcloud;
 	verticiesPointcloud.resize(m_depth_height * m_depth_width * 4); // x,y,z, values for the projected 3D pointcloud
 	m_verticesPointcloud = verticiesPointcloud;
@@ -326,6 +352,7 @@ void kRender::setVertPositions()
 	std::vector<float>  colorDepthMapping;
 	colorDepthMapping.resize(m_depth_height * m_depth_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
 	m_colorDepthMapping = colorDepthMapping;
+
 
 	std::vector<float> checkerBoardPoints;
 	checkerBoardPoints.resize(5 * 7 * 2);
@@ -417,6 +444,29 @@ void kRender::setTextures()
 
 	glBindVertexArray(0);
 
+	// set up VOA for pointcloud for big depth
+	glGenVertexArrays(1, &m_VAO_BD);
+	glBindVertexArray(m_VAO_BD);
+
+	// set up for pointcloud SSBO
+	glGenBuffers(1, &m_buf_Pointcloud_big_depth);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buf_Pointcloud_big_depth);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloud.size() * sizeof(float), &m_verticesBigDepthPointcloud[0], GL_DYNAMIC_DRAW);
+
+	glGenBuffers(1, &m_buf_color_big_depth_map);
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
+	glBufferData(GL_ARRAY_BUFFER, m_colorBigDepthMapping.size() * sizeof(float), &m_colorBigDepthMapping[0], GL_STATIC_DRAW);
+	// bind buffers to VAO
+
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud_big_depth);
+	glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 0, 0); //  binding loc 4
+	glEnableVertexAttribArray(4); // binding loc 4
+
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
+	glEnableVertexAttribArray(1);
+
+	glBindVertexArray(0);
 
 
 // Texture Depth Generate
@@ -474,6 +524,28 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, m_depth_width, m_depth_height, 0, GL_RED, GL_FLOAT, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
 
+// Texture Filtered Depth Generate
+glGenTextures(1, &m_textureBigDepth);
+glActiveTexture(GL_TEXTURE5);
+glBindTexture(GL_TEXTURE_2D, m_textureBigDepth); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1920, 1082, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
+
+
+// Texture Filtered Depth Generate
+glGenTextures(1, &m_textureFilteredBigDepth);
+glActiveTexture(GL_TEXTURE6);
+glBindTexture(GL_TEXTURE_2D, m_textureFilteredBigDepth); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1920, 1082, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
 
 // Texture Vertex3D
 glGenTextures(1, &m_textureVertex);
@@ -488,6 +560,22 @@ glGenTextures(1, &m_textureNormal);
 glBindTexture(GL_TEXTURE_2D, m_textureNormal); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
 glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_depth_width, m_depth_height);
 glBindImageTexture(5, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+
+// Texture Vertex3D
+glGenTextures(1, &m_textureBigVertex);
+glBindTexture(GL_TEXTURE_2D, m_textureBigVertex); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_color_width, m_color_height + 2);
+glBindImageTexture(6, m_textureBigVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+
+
+// Texture Normal3D
+glGenTextures(1, &m_textureBigNormal);
+glBindTexture(GL_TEXTURE_2D, m_textureBigNormal); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA32F, m_color_width, m_color_height + 2);
+glBindImageTexture(7, m_textureBigNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
 
 
 }
@@ -567,9 +655,10 @@ void kRender::labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap
 
 }
 
-void kRender::setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag)
+void kRender::setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag)
 {
 	m_showDepthFlag = showDepthFlag;
+	m_showBigDepthFlag = showBigDepthFlag;
 	m_showInfraFlag = showInfraFlag;
 	m_showColorFlag = showColorFlag;
 	m_showLightFlag = showLightFlag;
@@ -579,7 +668,7 @@ void kRender::setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool s
 
 
 // set up the data buffers for rendering
-void kRender::setBuffersForRendering(float * depthArray, float * infraArray, float * colorArray, unsigned char * flowPtr)
+void kRender::setBuffersForRendering(float * depthArray, float * bigDepthArray, float * infraArray, float * colorArray, unsigned char * flowPtr)
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glEnable(GL_DEPTH_TEST);
@@ -614,6 +703,19 @@ void kRender::setBuffersForRendering(float * depthArray, float * infraArray, flo
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
 	}
 
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, m_textureFlow);
+	if (flowPtr != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
+	}
+
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, m_textureBigDepth);
+	if (bigDepthArray != NULL)
+	{
+		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height + 2, GL_RED, GL_FLOAT, bigDepthArray);
+	}
 
 
 }
@@ -634,21 +736,21 @@ void kRender::setDepthImageRenderPosition()
 
 }
 
-void kRender::setColorImageRenderPosition()
+void kRender::setColorImageRenderPosition(float vertFov)
 {
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
 	//// if setting z dist
-	float zDist = 3000.0f;
-	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
-	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+	//float zDist = 8000.0f;
+	//float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	//float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
 	//// else if setting size on window
-	//float zDist;
-	//zDist = ((float)h / 2) / tan(22.5 * M_PI / 180.0f);
-	//float halfHeightAtDist = (float)h / 2;
-	//float halfWidthAtDistance = (float)w / 2;
+	float zDist;
+	zDist = ((float)h * 4) / tan(vertFov * M_PI / 180.0f);
+	float halfHeightAtDist = (float)h * 4;
+	float halfWidthAtDistance = (float)w * 4;
 	//m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, -halfHeightAtDist, -zDist));
-	glm::vec3 scaleVec = glm::vec3(2.f, 2.f, 1.0f);
+	glm::vec3 scaleVec = glm::vec3(4.f, 4.f, 1.0f);
 
 	m_model_color = glm::scale(glm::mat4(1.0f), scaleVec);
 	m_model_color = glm::translate(m_model_color, glm::vec3(-m_color_width / 2.0f, -m_color_height / 2.0f, -zDist));
@@ -701,10 +803,29 @@ void kRender::setLightModelRenderPosition()
 {
 	int w, h;
 	glfwGetFramebufferSize(m_window, &w, &h);
-	float zDist = 1500.0f;
-	float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
-	float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
-	m_model_lightmodel = glm::translate(glm::mat4(1.0f), glm::vec3(halfWidthAtDistance - m_depth_width, -halfHeightAtDist, -zDist));
+	//float zDist = 3000.0f;
+	//float halfHeightAtDist = zDist * tan(22.5f * M_PI / 180.0f);
+	//float halfWidthAtDistance = halfHeightAtDist * (float)w / (float)h; // notsure why this ratio is used here...
+
+	float zDist;
+	zDist = ((float)h * 4) / tan(30.5f * M_PI / 180.0f);
+	float halfHeightAtDist = (float)h * 4;
+	float halfWidthAtDistance = (float)w * 4;
+	//m_model_color = glm::translate(glm::mat4(1.0f), glm::vec3(-m_color_width / 2.0f, -halfHeightAtDist, -zDist));
+
+	if (m_showBigDepthFlag)
+	{
+		glm::vec3 scaleVec = glm::vec3(4.f, 4.f, 1.0f);
+
+		m_model_lightmodel = glm::scale(glm::mat4(1.0f), scaleVec);
+		m_model_lightmodel = glm::translate(m_model_lightmodel, glm::vec3(-m_color_width / 2.0f, -m_color_height / 2.0f, -zDist + 10.0f));
+
+	}
+	else
+	{
+		m_model_lightmodel = glm::translate(glm::mat4(1.0f), glm::vec3(halfWidthAtDistance - m_depth_width, -halfHeightAtDist, -zDist));
+
+	}
 
 }
 
@@ -762,7 +883,9 @@ void kRender::renderLiveVideoWindow()
 	if (m_showInfraFlag)
 	{
 		MVP = m_projection * m_view * m_model_infra;
-		glUniform1f(m_irBrightnessID, m_ir_brightness);
+		glUniform1f(m_irLowID, m_ir_low);
+		glUniform1f(m_irHighID, m_ir_high);
+
 		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID); // use the depth vertex subroutine
 		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_InfraSubroutineID); // use the infra fragment subroutine
 		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
@@ -783,12 +906,24 @@ void kRender::renderLiveVideoWindow()
 		//draw color tile
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	}
+	
+	// FOR BIG DEPTH
+	if (m_showBigDepthFlag)
+	{
+		MVP = m_projection * m_view * m_model_color;
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_color2DSubroutineID);
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_BigDepthSubroutineID);
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		//draw color tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+	}
+
 
 	//FOR FLOW
 	if (m_showFlowFlag)
 	{
 		MVP = m_projection * m_view * m_model_flow;
-		glUniform1f(m_irBrightnessID, m_ir_brightness);
 		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID); // use the depth vertex subroutine
 		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_FlowSubroutineID); // use the infra fragment subroutine
 		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
@@ -843,13 +978,29 @@ void kRender::renderLiveVideoWindow()
 		glm::vec3 light = glm::vec3(1.0f, 1.0f, -1.0f);
 		glm::vec3 ambient = glm::vec3(0.1f, 0.1f, 0.1f);
 		// Bind Textures using texture units
-		glActiveTexture(GL_TEXTURE4);
-		glBindTexture(GL_TEXTURE_2D, m_textureVertex);
-		glActiveTexture(GL_TEXTURE5);
-		glBindTexture(GL_TEXTURE_2D, m_textureNormal);
+		if (m_showBigDepthFlag)
+		{
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, m_textureBigVertex);
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_2D, m_textureBigNormal);
 
-		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
-		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
+			glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_color2DSubroutineID);
+			glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
+		}
+		else
+		{
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, m_textureVertex);
+			glActiveTexture(GL_TEXTURE5);
+			glBindTexture(GL_TEXTURE_2D, m_textureNormal);
+
+			glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_depth2DSubroutineID);
+			glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_VertexSubroutineID);
+		}
+
+
+
 
 		glUniform3fv(m_lightID, 1, glm::value_ptr(light));
 		glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
@@ -896,16 +1047,33 @@ void kRender::renderFlow(unsigned char* flowPtr)
 
 }
 
-void kRender::filterDepth()
+void kRender::filterDepth(bool useBigDepth)
 {
 	// bind image textures 
-	glBindImageTexture(0, m_textureDepth, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
-	glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
-		
-	filterProg.use();
+	int xWidth;
+	int yWidth;
 
-	int xWidth = divup(m_depth_width, 32);
-	int yWidth = divup(m_depth_height, 32);
+	if (useBigDepth)
+	{
+		glBindImageTexture(0, m_textureBigDepth, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+		glBindImageTexture(1, m_textureFilteredBigDepth, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+		filterProg.use();
+
+		xWidth = divup(m_color_width, 32);
+		yWidth = divup(m_color_height + 2, 32);
+	}
+	else
+	{
+		glBindImageTexture(0, m_textureDepth, 0, GL_FALSE, 0, GL_READ_ONLY, GL_R32F);
+		glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_R32F);
+
+		filterProg.use();
+
+		xWidth = divup(m_depth_width, 32);
+		yWidth = divup(m_depth_height, 32);
+	}
+
 
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
@@ -913,53 +1081,90 @@ void kRender::filterDepth()
 
 
 
-void kRender::computeDepthToVertex()
+void kRender::computeDepthToVertex(bool useBigDepth)
 {
 	// get inverse camera matrix
-	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams);
+	int xWidth;
+	int yWidth;
 
-	// bind image textures 
-	glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
-	glBindImageTexture(2, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+	if (useBigDepth)
+	{
+		glm::mat4 invK = getInverseCameraMatrix(m_cameraParams_color); // make sure im set
+		// bind image textures 
+		glBindImageTexture(1, m_textureFilteredBigDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+		glBindImageTexture(2, m_textureBigVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
-	computeProg.use();
-	//computeProg.setUniform("invK", invK);
-	glUniformMatrix4fv(m_invkID, 1, GL_FALSE, glm::value_ptr(invK));
+		computeProg.use();
+		//computeProg.setUniform("invK", invK);
+		glUniformMatrix4fv(m_invkID, 1, GL_FALSE, glm::value_ptr(invK));
+		glUniform4fv(m_camPamsID, 1, glm::value_ptr(m_cameraParams_color));
 
-	int xWidth = divup(m_depth_width, 32);
-	int yWidth = divup(m_depth_height, 32);
+		xWidth = divup(m_color_width, 32);
+		yWidth = divup(m_color_height + 2, 32);
+	}
+	else
+	{
+		glm::mat4 invK = getInverseCameraMatrix(m_cameraParams);
+
+		// bind image textures 
+		glBindImageTexture(1, m_textureFilteredDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+		glBindImageTexture(2, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+		computeProg.use();
+		//computeProg.setUniform("invK", invK);
+		glUniformMatrix4fv(m_invkID, 1, GL_FALSE, glm::value_ptr(invK));
+		glUniform4fv(m_camPamsID, 1, glm::value_ptr(m_cameraParams));
+
+
+		xWidth = divup(m_depth_width, 32);
+		yWidth = divup(m_depth_height, 32);
+	}
+
 
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void kRender::computeVertexToNormal()
+void kRender::computeVertexToNormal(bool useBigDepth)
 {
-	glBindImageTexture(0, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-	glBindImageTexture(1, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-	v2nProg.use();
+	int xWidth;
+	int yWidth;
 
-	int xWidth = divup(m_depth_width, 32);
-	int yWidth = divup(m_depth_height, 32);
+	if (useBigDepth)
+	{
+		glBindImageTexture(0, m_textureBigVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, m_textureBigNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		v2nProg.use();
+
+		xWidth = divup(m_color_width, 32);
+		yWidth = divup(m_color_height + 2, 32);
+		
+	}
+	else
+	{
+		glBindImageTexture(0, m_textureVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		glBindImageTexture(1, m_textureNormal, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		v2nProg.use();
+
+		xWidth = divup(m_depth_width, 32);
+		yWidth = divup(m_depth_height, 32);
+	}
+
 	glDispatchCompute(xWidth, yWidth, 1);
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
-void kRender::renderPointCloud()
+void kRender::renderPointCloud(bool useBigDepth)
 {
 	if (m_showPointFlag)
 	{
-		glm::mat4 MVP = m_projection * m_view * m_model_pointcloud;
+		//glm::mat4 projection = glm::ortho(-960.0f, 960.0f, -540.0f, 540.0f, 0.1f, 10000.0f);
+		glm::mat4 projection = glm::perspective(glm::radians(61.087f), 1920.0f / 1080.0f, 0.1f, 100000.0f); // 61 was obtained https://codeyarns.com/2015/09/08/how-to-compute-intrinsic-camera-matrix-for-a-camera/ from fy = y / tan(TOVy / 2) , where y = halfHeight = 1080 / 2
+
+		glm::mat4 MVP = projection * m_view * m_model_pointcloud;
 
 		glEnable(GL_POINT_SPRITE);
 		glEnable(GL_VERTEX_PROGRAM_POINT_SIZE);
-
-
-
-
-
-
-
 
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -980,15 +1185,29 @@ void kRender::renderPointCloud()
 																			   //set uniforms
 		//glUniform3fv(m_lightID, 1, glm::value_ptr(light));
 		//glUniform3fv(m_ambientID, 1, glm::value_ptr(ambient));
-		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(projection));
 		//glUniformMatrix4fv(m_ViewProjectionID, 1, GL_FALSE, glm::value_ptr(VP));
 		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
 
-		// draw points
-		glPointSize(3.0f);
-		glBindVertexArray(m_VAO_Pointcloud);
-		glDrawArrays(GL_POINTS, 0, 512 * 424);
-		glBindVertexArray(0);
+		if (useBigDepth)
+		{
+			// draw points
+			glPointSize(2.0f);
+			glBindVertexArray(m_VAO_BD);
+			glDrawArrays(GL_POINTS, 0, 1920 * 1082);
+			glBindVertexArray(0);
+		}
+		else
+		{
+			// draw points
+			glPointSize(3.0f);
+			glBindVertexArray(m_VAO_Pointcloud);
+			glDrawArrays(GL_POINTS, 0, 512 * 424);
+			glBindVertexArray(0);
+		}
+
+
+
 	}
 }
 

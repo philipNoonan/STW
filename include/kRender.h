@@ -140,10 +140,10 @@ class kRender
 		void setupComputeFBO();
 
 		// The correcter way 
-		void setRenderingOptions(bool showDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag);
-		void setBuffersForRendering(float * depthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
+		void setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag,  bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag);
+		void setBuffersForRendering(float * depthArray, float * bigDepthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
 		void setDepthImageRenderPosition();
-		void setColorImageRenderPosition();
+		void setColorImageRenderPosition(float vertFov);
 		void setInfraImageRenderPosition();
 		void setFlowImageRenderPosition();
 		void setPointCloudRenderPosition(float modelZ);
@@ -161,9 +161,10 @@ class kRender
 		void drawLightModel();
 		void setComputeWindowPosition();
 
-		void setCameraParams(glm::vec4 camPams)
+		void setCameraParams(glm::vec4 camPams, glm::vec4 camPamsColor)
 		{
 			m_cameraParams = camPams;
+			m_cameraParams_color = camPamsColor;
 		}
 
 		std::vector<std::pair<int, int>> getDepthPoints2D()
@@ -188,19 +189,25 @@ class kRender
 		{
 			translation_vector = tvec;
 		}
-		void setIrBrightness(float irb)
+		void setIrBrightness(float irL, float irH)
 		{
-			m_ir_brightness = irb;
+			m_ir_low = irL;
+			m_ir_high = irH;
+		}
+
+		void setFov(float fov)
+		{
+			m_vertFov = fov;
 		}
 
 		void setCheckerBoardPointsColor(std::vector<cv::Point2f> pointsColor);
 		void setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra);
 
 		// compute shader time
-		void filterDepth();
-		void computeDepthToVertex();
-		void computeVertexToNormal();
-		void renderPointCloud();
+		void filterDepth(bool useBigDepth = false);
+		void computeDepthToVertex(bool useBigDepth = false);
+		void computeVertexToNormal(bool useBigDepth = false);
+		void renderPointCloud(bool useBigDepth = false);
 
 		void cleanUp();
 
@@ -223,9 +230,14 @@ private:
 	std::vector<float> m_color_vert;
 	std::vector<float> m_depth_vert;
 
+	GLuint m_VAO_BD;
+	GLuint m_buf_Pointcloud_big_depth;
+	GLuint m_buf_color_big_depth_map;
 	GLuint m_VAO_Pointcloud;
 	GLuint m_buf_Pointcloud;
 	GLuint m_buf_color_depth_map;
+	std::vector<float> m_verticesBigDepthPointcloud;
+	std::vector<float> m_colorBigDepthMapping;
 	std::vector<float> m_verticesPointcloud;
 	std::vector<float> m_colorDepthMapping;
 
@@ -244,9 +256,11 @@ private:
 	GLuint m_ambientID;
 	GLuint m_lightID;
 
-	GLuint m_irBrightnessID;
+	GLuint m_irLowID;
+	GLuint m_irHighID;
 
 	GLuint m_DepthSubroutineID;
+	GLuint m_BigDepthSubroutineID;
 	GLuint m_InfraSubroutineID;
 	GLuint m_ColorSubroutineID;
 	GLuint m_FlowSubroutineID;
@@ -262,11 +276,14 @@ private:
 	GLuint m_position2DSubroutineID;
 	GLuint m_depthDataTypeSubroutineID;
 	GLuint m_invkID;
+	GLuint m_camPamsID;
 
 
 	//textures
 	GLuint m_textureDepth;
 	GLuint m_textureFilteredDepth;
+	GLuint m_textureBigDepth;
+	GLuint m_textureFilteredBigDepth;
 	GLuint m_textureInfra;
 	GLuint m_textureColor;
 	GLuint m_textureFlow;
@@ -274,6 +291,8 @@ private:
 
 	GLuint m_textureVertex;
 	GLuint m_textureNormal;
+	GLuint m_textureBigVertex;
+	GLuint m_textureBigNormal;
 
 	int m_screen_height;
 	int m_screen_width;
@@ -296,6 +315,7 @@ private:
 	glm::mat4 ColorView = glm::translate(glm::mat4(1.0f), glm::vec3(-0.f, -0.f, -0.0f));
 
 	glm::vec4 m_cameraParams;
+	glm::vec4 m_cameraParams_color;
 
 	// k.x = fx, k.y = fy, k.z = cx, k.y = cy, skew = 1
 	glm::mat4 getInverseCameraMatrix(const glm::vec4 & k) {
@@ -304,6 +324,11 @@ private:
 		invK[1] = glm::vec4(0, 1.0f / k.y, -k.w / k.y, 0);
 		invK[2] = glm::vec4(0, 0, 1, 0);
 		invK[3] = glm::vec4(0, 0, 0, 1);
+		//std::cout << invK[0][0] << " " << invK[0][1] << " " << invK[0][2] << " " << invK[0][3] << " " << std::endl;
+		//std::cout << invK[1][0] << " " << invK[1][1] << " " << invK[1][2] << " " << invK[1][3] << " " << std::endl;
+		//std::cout << invK[2][0] << " " << invK[2][1] << " " << invK[2][2] << " " << invK[2][3] << " " << std::endl;
+		//std::cout << invK[3][0] << " " << invK[3][1] << " " << invK[3][2] << " " << invK[3][3] << " " << std::endl;
+
 		return invK;
 	}
 
@@ -347,7 +372,10 @@ private:
 	cv::Mat rotation_vector; // Rotation in axis-angle form
 	cv::Mat translation_vector;
 
-	float m_ir_brightness = 10000.0f;
+
+	float m_ir_low = 0.0f;
+	float m_ir_high = 65536.0f;
+	float m_vertFov = 35.0f;
 	//std::vector<cv::Point2f> m_detected_points_color;
 	//std::vector<cv::Point2f> m_detected_points_infra;
 
@@ -363,6 +391,7 @@ private:
 	bool m_showDepthFlag = false;
 	bool m_showInfraFlag = false;
 	bool m_showColorFlag = false;
+	bool m_showBigDepthFlag = false;
 	bool m_showLightFlag = false;
 	bool m_showPointFlag = false;
 	bool m_showFlowFlag = false;

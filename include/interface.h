@@ -96,6 +96,28 @@ public:
 		return m_depth_ppy;
 	}
 
+
+	float fx_col()
+	{
+		return m_color_fx;
+	}
+
+	float fy_col()
+	{
+		return m_color_fy;
+	}
+
+	float ppx_col()
+	{
+		return m_color_ppx;
+	}
+
+	float ppy_col()
+	{
+		return m_color_ppy;
+	}
+
+
 private:
 	void captureLoop();
 
@@ -114,6 +136,11 @@ private:
 	float m_depth_fy;
 	float m_depth_ppx;
 	float m_depth_ppy;
+
+	float m_color_fx;
+	float m_color_fy;
+	float m_color_ppx;
+	float m_color_ppy;
 
 	float m_depth_k1;
 	float m_depth_k2;

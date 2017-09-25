@@ -223,6 +223,21 @@ void Freenect2Camera::captureLoop()
 	if (!dev->start())
 		return;
 
+
+
+	libfreenect2::Freenect2Device::IrCameraParams irCamParams = dev->getIrCameraParams();
+	//irCamParams.fx = 3.9080578483788156e+02;
+	//irCamParams.fy = 3.7741419661721176e+02;
+	//irCamParams.cx = 2.5370329019563212e+02;
+	//irCamParams.cy = 2.0673269116451189e+02;
+	//irCamParams.k1 = 1.3674847284412689e-01;
+	//irCamParams.k2 = -3.6410922984970906e-01;
+	//irCamParams.k3 = -1.5667852431085372e-03;
+	//irCamParams.p1 = -8.3848858331672035e-03;
+	//irCamParams.p2 = 9.8484885530744859e-02;
+
+	dev->setIrCameraParams(irCamParams);
+
 	m_depth_fx = dev->getIrCameraParams().fx;
 	m_depth_fy = dev->getIrCameraParams().fy;
 	m_depth_ppx = dev->getIrCameraParams().cx;
@@ -236,9 +251,19 @@ void Freenect2Camera::captureLoop()
 
 	m_colorCamPams = dev->getColorCameraParams();
 
-	
+	m_color_fx = m_colorCamPams.fx;
+	m_color_fy = m_colorCamPams.fy;
+	m_color_ppx = m_colorCamPams.cx;
+	m_color_ppy = m_colorCamPams.cy;
 
-	libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), dev->getColorCameraParams());
+	//m_colorCamPams.fx = 9.8886340346057432e+02;
+	//m_colorCamPams.fy = 9.1514224089519803e+02;
+	//m_colorCamPams.cx = 1.0211721350442493e+03;
+	//m_colorCamPams.cy = 5.0197760905458745e+02;
+
+	//dev->setColorCameraParams(m_colorCamPams);
+
+	libfreenect2::Registration* registration = new libfreenect2::Registration(dev->getIrCameraParams(), m_colorCamPams);
 	libfreenect2::Frame undistorted(m_frame_width, m_frame_height, 4), registered(m_frame_width, m_frame_height, 4), bigDepth(1920, 1082, 4);
 	int colorDepthIndex[512 * 424];
 

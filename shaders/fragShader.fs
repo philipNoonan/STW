@@ -11,7 +11,8 @@ layout(location = 0) out vec4 color;
 uniform mat4 model;
 uniform vec3 ambient;
 uniform vec3 light;
-uniform float irBrightness = 1.0f;
+uniform float irLow = 0.0f;
+uniform float irHigh = 65536.0f;
 
 // Texture samplers
 layout (binding=0) uniform sampler2D currentTextureDepth;
@@ -20,6 +21,7 @@ layout (binding=2) uniform sampler2D currentTextureColor;
 layout (binding=3) uniform sampler2D currentTextureFlow;
 layout (binding=4) uniform sampler2D currentTextureVertex;
 layout (binding=5) uniform sampler2D currentTextureNormal;
+layout (binding=6) uniform sampler2D currentTextureBigDepth;
 
 subroutine vec4 getColor();
 subroutine uniform getColor getColorSelection;
@@ -29,6 +31,13 @@ vec4 fromDepth()
 {
 	vec4 redChnl = texture(currentTextureDepth, TexCoord);
 	return vec4(redChnl.x/5000.0f, redChnl.x / 5000.0f, redChnl.x / 5000.0f, 1.0f);
+}
+
+subroutine(getColor)
+vec4 fromBigDepth()
+{
+	vec4 redChnl = texture(currentTextureBigDepth, TexCoord);
+	return vec4(redChnl.x/5000.0f, redChnl.x / 5000.0f, redChnl.x / 5000.0f, 0.1f);
 }
 
 subroutine(getColor)
@@ -114,8 +123,9 @@ vec4 fromInfra()
 {
 	vec4 redChnl = texture(currentTextureInfra, TexCoord);
 	//float tMod = mod(redChnl.x / 10000.0f, 1.0f); 
+	float irColor = (redChnl.x - irLow) / irHigh;
 
-	return vec4(redChnl.x / irBrightness / 10.0f, redChnl.x / irBrightness / 10.0f, redChnl.x / irBrightness / 10.0f, 1.0f);
+	return vec4(irColor.xxx, 1.0f);
 }
 
 subroutine(getColor)
