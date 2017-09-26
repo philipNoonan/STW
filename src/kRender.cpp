@@ -230,6 +230,12 @@ void kRender::compileAndLinkShader()
 		filterProg.compileShader("shaders/filter3D.cs");
 		filterProg.link();
 
+		edgeProg.compileShader("shaders/sobelEdge.cs");
+		edgeProg.link();
+
+		currentDepthProg.compileShader("shaders/currentDepth.cs");
+		currentDepthProg.link();
+
 		v2nProg.compileShader("shaders/vertexTonormal.cs");
 		v2nProg.link();
 	}
@@ -256,6 +262,8 @@ void kRender::setLocations()
 	m_BigDepthSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromBigDepth");
 	m_InfraSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromInfra");
 	m_ColorSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromColor");
+	m_EdgesSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromEdges");
+
 	m_FlowSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromFlow");
 	m_VertexSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromVertex");
 	m_PointsSubroutineID = glGetSubroutineIndex(renderProg.getHandle(), GL_FRAGMENT_SHADER, "fromPoints");
@@ -327,6 +335,10 @@ void kRender::setVertPositions()
 	std::vector<float>  verticiesBigDepthPointcloud;
 	verticiesBigDepthPointcloud.resize((m_color_height + 2)* m_color_width * 4); // x,y,z, values for the projected 3D pointcloud
 	m_verticesBigDepthPointcloud = verticiesBigDepthPointcloud;
+	// and the curr and prev
+	m_verticesBigDepthPointcloud_prev = verticiesBigDepthPointcloud;
+	m_verticesBigDepthPointcloud_curr = verticiesBigDepthPointcloud;
+
 
 	std::vector<float>  colorBigDepthMapping;
 	colorBigDepthMapping.resize((m_color_height + 2) * m_color_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
@@ -345,6 +357,27 @@ void kRender::setVertPositions()
 	//m_colorDepthMapping[j] = ((float)xCoord) / (float)m_color_width;
 	//m_colorDepthMapping[j + 1] = (1080.0f - (float)yCoord) / (float)m_color_height;
 
+	std::vector<unsigned int> indexBigDepthPointCloud;
+	indexBigDepthPointCloud.resize(m_color_width * (m_color_height + 2) * 2 * 3);
+
+	int i = 0;
+	for (int j = 0; j < m_color_width * (m_color_height + 2) * 6; j += 6)
+	{
+		indexBigDepthPointCloud[j + 0] = i;
+		indexBigDepthPointCloud[j + 1] = i + 1;
+		indexBigDepthPointCloud[j + 2] = i + m_color_width;
+
+		indexBigDepthPointCloud[j + 3] = i + 1;
+		indexBigDepthPointCloud[j + 4] = i + 1 + m_color_width;
+		indexBigDepthPointCloud[j + 5] = i + m_color_width;
+		i++;
+
+	}
+
+
+
+	m_indexBigDepthPointCloud = indexBigDepthPointCloud;
+
 	std::vector<float>  verticiesPointcloud;
 	verticiesPointcloud.resize(m_depth_height * m_depth_width * 4); // x,y,z, values for the projected 3D pointcloud
 	m_verticesPointcloud = verticiesPointcloud;
@@ -353,6 +386,11 @@ void kRender::setVertPositions()
 	colorDepthMapping.resize(m_depth_height * m_depth_width * 2); // x, y pixel location (normalised to 0 - 1 coords (i.e. divided by 1920 and 1080)) for grabbing the color texture 
 	m_colorDepthMapping = colorDepthMapping;
 
+	//std::vector<float> vertRGB;
+	//vertRGB.resize((m_color_height + 2) * m_color_width * 2 * 4);
+	//m_verticesBigDepthPointcloudRGB = vertRGB;
+	//m_verticesBigDepthPointcloudRGB_prev = vertRGB;
+	//m_verticesBigDepthPointcloudRGB_curr = vertRGB;
 
 	std::vector<float> checkerBoardPoints;
 	checkerBoardPoints.resize(5 * 7 * 2);
@@ -450,8 +488,37 @@ void kRender::setTextures()
 
 	// set up for pointcloud SSBO
 	glGenBuffers(1, &m_buf_Pointcloud_big_depth);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buf_Pointcloud_big_depth);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_buf_Pointcloud_big_depth); // binding location 0 inside the compute shader it hink
 	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloud.size() * sizeof(float), &m_verticesBigDepthPointcloud[0], GL_DYNAMIC_DRAW);
+
+	//assign index array for big depth pointcloud to try and make triangles...
+	glGenBuffers(1, &m_EBO_BD);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_BD);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indexBigDepthPointCloud.size() * sizeof(unsigned int), &m_indexBigDepthPointCloud[0], GL_STATIC_DRAW);
+
+	// color array for each vert
+	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth);
+	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buf_Pointcloud_RGB_big_depth); // binding location 1 inside the compute shader it hink
+	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB[0], GL_DYNAMIC_DRAW);
+
+	// set up for pointcloud SSBO
+	glGenBuffers(1, &m_buf_Pointcloud_big_depth_curr);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buf_Pointcloud_big_depth_curr); // binding location 2 inside the compute shader it hink
+	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloud_curr.size() * sizeof(float), &m_verticesBigDepthPointcloud_curr[0], GL_DYNAMIC_DRAW);
+
+	// set up for pointcloud SSBO
+	glGenBuffers(1, &m_buf_Pointcloud_big_depth_prev);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, m_buf_Pointcloud_big_depth_prev); // binding location 3inside the compute shader it hink
+	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloud_prev.size() * sizeof(float), &m_verticesBigDepthPointcloud_prev[0], GL_DYNAMIC_DRAW);
+
+	// color array for each vert
+	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth_curr);
+	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, m_buf_Pointcloud_RGB_big_depth_curr); // binding location 4 inside the compute shader it hink
+	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB_curr.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB_curr[0], GL_DYNAMIC_DRAW);
+
+	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth_prev);
+	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, m_buf_Pointcloud_RGB_big_depth_prev); // binding location 4 inside the compute shader it hink
+	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB_prev.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB_prev[0], GL_DYNAMIC_DRAW);
 
 	glGenBuffers(1, &m_buf_color_big_depth_map);
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
@@ -465,6 +532,10 @@ void kRender::setTextures()
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(1);
+
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud_RGB_big_depth);
+	glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 0, 0); //  binding loc 6
+	glEnableVertexAttribArray(6); // binding loc 6
 
 	glBindVertexArray(0);
 
@@ -501,6 +572,8 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
+
+
 
 // Texture Flow Generate
 glGenTextures(1, &m_textureFlow);
@@ -545,6 +618,29 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, 1920, 1082, 0, GL_RED, GL_FLOAT, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
+
+// Texture Previous Color Generate
+glGenTextures(1, &m_textureColorPrevious);
+glActiveTexture(GL_TEXTURE8);
+glBindTexture(GL_TEXTURE_2D, m_textureColorPrevious); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
+
+
+// Texture detected edges
+glGenTextures(1, &m_textureEdges);
+glActiveTexture(GL_TEXTURE7);
+glBindTexture(GL_TEXTURE_2D, m_textureEdges); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
 
 // Texture Vertex3D
@@ -655,7 +751,7 @@ void kRender::labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap
 
 }
 
-void kRender::setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag)
+void kRender::setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag, bool showEdgesFlag)
 {
 	m_showDepthFlag = showDepthFlag;
 	m_showBigDepthFlag = showBigDepthFlag;
@@ -664,6 +760,7 @@ void kRender::setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag, boo
 	m_showLightFlag = showLightFlag;
 	m_showPointFlag = showPointFlag;
 	m_showFlowFlag = showFlowFlag;
+	m_showEdgesFlag = showEdgesFlag;
 }
 
 
@@ -675,46 +772,58 @@ void kRender::setBuffersForRendering(float * depthArray, float * bigDepthArray, 
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, m_textureDepth);
+
 	if (depthArray != NULL)
 	{
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_textureDepth);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RED, GL_FLOAT, depthArray);
 	}
 
-	glActiveTexture(GL_TEXTURE1);
-	glBindTexture(GL_TEXTURE_2D, m_textureInfra);
+
 	if (infraArray != NULL)
 	{
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_textureInfra);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RED, GL_FLOAT, infraArray);
 	}
 
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, m_textureColor);
+
 	if (colorArray != NULL)
 	{
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_textureColor);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
 	}
 
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, m_textureFlow);
+
 	if (flowPtr != NULL)
 	{
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, m_textureFlow);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
 	}
 
-	glActiveTexture(GL_TEXTURE3);
-	glBindTexture(GL_TEXTURE_2D, m_textureFlow);
+
 	if (flowPtr != NULL)
 	{
+		glActiveTexture(GL_TEXTURE3); // what number should this be FIX ME
+		glBindTexture(GL_TEXTURE_2D, m_textureFlow);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RG, GL_FLOAT, flowPtr);
 	}
 
-	glActiveTexture(GL_TEXTURE6);
-	glBindTexture(GL_TEXTURE_2D, m_textureBigDepth);
+
 	if (bigDepthArray != NULL)
 	{
+		glActiveTexture(GL_TEXTURE6);
+		glBindTexture(GL_TEXTURE_2D, m_textureBigDepth);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height + 2, GL_RED, GL_FLOAT, bigDepthArray);
+	}
+
+	if (m_showEdgesFlag)
+	{
+		glActiveTexture(GL_TEXTURE7);
+		glBindTexture(GL_TEXTURE_2D, m_textureEdges);
 	}
 
 
@@ -906,6 +1015,25 @@ void kRender::renderLiveVideoWindow()
 		//draw color tile
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 	}
+
+
+	// FOR EDGES
+	if (m_showEdgesFlag)
+	{
+		MVP = m_projection * m_view * m_model_color;
+		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_color2DSubroutineID);
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_EdgesSubroutineID);
+		glUniformMatrix4fv(m_ProjectionID, 1, GL_FALSE, glm::value_ptr(m_projection));
+		glUniformMatrix4fv(m_MvpID, 1, GL_FALSE, glm::value_ptr(MVP));
+		//draw color tile
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+
+
+
+	}
+
+
 	
 	// FOR BIG DEPTH
 	if (m_showBigDepthFlag)
@@ -970,6 +1098,8 @@ void kRender::renderLiveVideoWindow()
 			glDrawArrays(GL_POINTS, 0, 5 * 7 * 2);
 		}
 	}
+
+
 
 	// FOR LIGHTMODEL
 	if (m_showLightFlag)
@@ -1089,6 +1219,10 @@ void kRender::computeDepthToVertex(bool useBigDepth)
 
 	if (useBigDepth)
 	{
+		// bind the color texture for color sampling
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_textureColor);
+
 		glm::mat4 invK = getInverseCameraMatrix(m_cameraParams_color); // make sure im set
 		// bind image textures 
 		glBindImageTexture(1, m_textureFilteredBigDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
@@ -1154,6 +1288,105 @@ void kRender::computeVertexToNormal(bool useBigDepth)
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
+void kRender::computeEdges()
+{
+	// bind input color image to 0
+	// bind output edge image to 1
+	glBindTexture(GL_TEXTURE_2D, m_textureColor);
+	glBindImageTexture(0, m_textureColor, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+	glBindTexture(GL_TEXTURE_2D, m_textureEdges);
+	glBindImageTexture(1, m_textureEdges, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+
+	int xWidth;
+	int yWidth;
+
+	edgeProg.use();
+
+	xWidth = divup(m_color_width, 32);
+	yWidth = divup(m_color_height, 32);
+
+	glDispatchCompute(xWidth, yWidth, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+}
+
+
+
+void kRender::computeBlur(bool useBigDepth)
+{
+	int xWidth;
+	int yWidth;
+
+	if (useBigDepth)
+	{
+		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+
+		glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_big_depth);
+		glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_big_depth_curr);
+		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, 1920 * 1082 * 4 * sizeof(float));
+
+		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+		//glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_RGB_big_depth);
+		//glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_RGB_big_depth_curr);
+		//glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, 1920 * 1082 * 4 * sizeof(float));
+
+		//glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+
+
+		//glCopyImageSubData(m_textureColor, GL_TEXTURE_2D, 0, 0, 0, 0,
+		//	m_textureColorPrevious, GL_TEXTURE_2D, 0, 0, 0, 0,
+		//	m_color_width, m_color_height, 1);
+
+		glBindTexture(GL_TEXTURE_2D, m_textureColorPrevious);
+		glBindImageTexture(0, m_textureColorPrevious, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+		glBindTexture(GL_TEXTURE_2D, m_textureColor);
+		glBindImageTexture(1, m_textureColor, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+		//glBindImageTexture(0, m_textureBigVertex_prev, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		//glBindImageTexture(1, m_textureBigVertex_curr, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+		//glBindImageTexture(2, m_textureBigVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
+
+
+		currentDepthProg.use();
+
+		xWidth = divup(m_color_width, 32);
+		yWidth = divup(m_color_height + 2, 32);
+
+		glDispatchCompute(xWidth, yWidth, 1);
+		glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+
+
+
+
+
+		//glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_big_depth);
+		//glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_big_depth_prev);
+		//glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, 1920 * 1082 * 4 * sizeof(float));
+
+		//glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+
+
+	}
+
+	// copy current buffer to previous buffer
+	//GLuint tBuf1 = m_buf_Pointcloud_big_depth_curr;
+	//m_buf_Pointcloud_big_depth_curr = m_buf_Pointcloud_big_depth_prev;
+	//m_buf_Pointcloud_big_depth_prev = tBuf1;
+
+}
+
+
+
+
+
+
+
 void kRender::renderPointCloud(bool useBigDepth)
 {
 	if (m_showPointFlag)
@@ -1179,8 +1412,10 @@ void kRender::renderPointCloud(bool useBigDepth)
 		renderProg.use();
 
 		// set subroutines
+		//glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID); // "fromVertex3D"
 		glUniformSubroutinesuiv(GL_VERTEX_SHADER, 1, &m_vertex3DSubroutineID); // "fromVertex3D"
-		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_PointsSubroutineID); // "fromPoints"
+
+		glUniformSubroutinesuiv(GL_FRAGMENT_SHADER, 1, &m_ColorSubroutineID); // "fromPoints"
 
 																			   //set uniforms
 		//glUniform3fv(m_lightID, 1, glm::value_ptr(light));
@@ -1192,9 +1427,12 @@ void kRender::renderPointCloud(bool useBigDepth)
 		if (useBigDepth)
 		{
 			// draw points
-			glPointSize(2.0f);
+			//glPointSize(1.0f);
 			glBindVertexArray(m_VAO_BD);
-			glDrawArrays(GL_POINTS, 0, 1920 * 1082);
+
+			glDrawElements(GL_LINES, 1920 * 1082 * 6, GL_UNSIGNED_INT, 0);
+
+			//glDrawArrays(GL_POINTS, 0, 1920 * 1082);
 			glBindVertexArray(0);
 		}
 		else

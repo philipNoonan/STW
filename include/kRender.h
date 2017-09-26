@@ -140,7 +140,7 @@ class kRender
 		void setupComputeFBO();
 
 		// The correcter way 
-		void setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag,  bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag);
+		void setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag,  bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag, bool showEdgesFlag);
 		void setBuffersForRendering(float * depthArray, float * bigDepthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
 		void setDepthImageRenderPosition();
 		void setColorImageRenderPosition(float vertFov);
@@ -207,6 +207,8 @@ class kRender
 		void filterDepth(bool useBigDepth = false);
 		void computeDepthToVertex(bool useBigDepth = false);
 		void computeVertexToNormal(bool useBigDepth = false);
+		void computeEdges();
+		void computeBlur(bool useBigDepth = false);
 		void renderPointCloud(bool useBigDepth = false);
 
 		void cleanUp();
@@ -216,6 +218,8 @@ private:
 	GLSLProgram renderProg;
 	GLSLProgram computeProg;
 	GLSLProgram filterProg;
+	GLSLProgram edgeProg;
+	GLSLProgram currentDepthProg;
 	GLSLProgram v2nProg;
 
 	GLFWwindow * m_window;
@@ -231,12 +235,29 @@ private:
 	std::vector<float> m_depth_vert;
 
 	GLuint m_VAO_BD;
+	GLuint m_EBO_BD;
 	GLuint m_buf_Pointcloud_big_depth;
+	GLuint m_buf_Pointcloud_RGB_big_depth;
+	GLuint m_buf_Pointcloud_RGB_big_depth_prev;
+	GLuint m_buf_Pointcloud_RGB_big_depth_curr;
+	GLuint m_buf_Pointcloud_big_depth_prev;
+	GLuint m_buf_Pointcloud_big_depth_curr;
 	GLuint m_buf_color_big_depth_map;
 	GLuint m_VAO_Pointcloud;
 	GLuint m_buf_Pointcloud;
 	GLuint m_buf_color_depth_map;
 	std::vector<float> m_verticesBigDepthPointcloud;
+
+	//std::vector<float> m_verticesBigDepthPointcloudRGB;
+	std::vector<unsigned int> m_indexBigDepthPointCloud;
+
+	//std::vector<float> m_verticesBigDepthPointcloudRGB_curr;
+	//std::vector<float> m_verticesBigDepthPointcloudRGB_prev;
+
+	std::vector<float> m_verticesBigDepthPointcloud_prev;
+	std::vector<float> m_verticesBigDepthPointcloud_curr;
+
+
 	std::vector<float> m_colorBigDepthMapping;
 	std::vector<float> m_verticesPointcloud;
 	std::vector<float> m_colorDepthMapping;
@@ -263,6 +284,7 @@ private:
 	GLuint m_BigDepthSubroutineID;
 	GLuint m_InfraSubroutineID;
 	GLuint m_ColorSubroutineID;
+	GLuint m_EdgesSubroutineID;
 	GLuint m_FlowSubroutineID;
 	GLuint m_VertexSubroutineID;
 	GLuint m_PointsSubroutineID;
@@ -286,12 +308,16 @@ private:
 	GLuint m_textureFilteredBigDepth;
 	GLuint m_textureInfra;
 	GLuint m_textureColor;
+	GLuint m_textureColorPrevious;
 	GLuint m_textureFlow;
 	GLuint m_textureDepthPrevious;
+	GLuint m_textureEdges;
 
 	GLuint m_textureVertex;
 	GLuint m_textureNormal;
 	GLuint m_textureBigVertex;
+	GLuint m_textureBigVertex_prev;
+	GLuint m_textureBigVertex_curr;
 	GLuint m_textureBigNormal;
 
 	int m_screen_height;
@@ -395,4 +421,5 @@ private:
 	bool m_showLightFlag = false;
 	bool m_showPointFlag = false;
 	bool m_showFlowFlag = false;
+	bool m_showEdgesFlag = false;
 };

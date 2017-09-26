@@ -66,6 +66,7 @@ bool showLightFlag = false;
 bool showPointFlag = false;
 
 bool showFlowFlag = false;
+bool showEdgesFlag = false;
 
 float irBrightness = 1.0;
 float irLow = 0.0f;

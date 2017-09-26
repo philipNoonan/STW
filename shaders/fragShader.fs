@@ -5,6 +5,7 @@ const float PI = 3.1415926535897932384626433832795f;
 in vec2 TexCoord;
 in float vertCol;
 in vec4 TexColor;
+in vec4 vert4D;
 
 layout(location = 0) out vec4 color;
 
@@ -22,6 +23,7 @@ layout (binding=3) uniform sampler2D currentTextureFlow;
 layout (binding=4) uniform sampler2D currentTextureVertex;
 layout (binding=5) uniform sampler2D currentTextureNormal;
 layout (binding=6) uniform sampler2D currentTextureBigDepth;
+layout (binding=7) uniform sampler2D currentTextureEdges;
 
 subroutine vec4 getColor();
 subroutine uniform getColor getColorSelection;
@@ -43,7 +45,14 @@ vec4 fromBigDepth()
 subroutine(getColor)
 vec4 fromColor()
 {
+
 	return vec4(texture(currentTextureColor, TexCoord));
+}
+
+subroutine(getColor)
+vec4 fromEdges()
+{
+	return vec4(texture(currentTextureEdges, TexCoord));
 }
 
 subroutine(getColor)
@@ -162,7 +171,8 @@ vec4 fromPoints()
 	//if (vertCol > 0)
 	//{
 		//vec4 tCol = vec4(texture(currentTextureColor,vec2(TexCoord.x, TexCoord.y)));
-		return vec4(TexColor.xyz, 1.0f);
+		//return vec4(TexColor.xyz, 1.0f);
+		return TexColor;
 		//		return vec4(1.0f, 0.0f,  0.0f, 1.0f);
 
 

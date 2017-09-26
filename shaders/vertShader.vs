@@ -5,6 +5,7 @@ layout (location = 2) in vec3 positionDepth;
 layout (location = 3) in vec2 texCoordDpeth;
 layout (location = 4) in vec4 position4D;
 layout (location = 5) in vec2 position2D;
+//layout (location = 6) in vec4 color4D;
 
 // Texture samplers
 layout (binding=2) uniform sampler2D currentTextureColor;
@@ -17,6 +18,7 @@ uniform mat4 MVP;
 out vec2 TexCoord;
 out float vertCol;
 out vec4 TexColor;
+out vec4 vert4D;
 
 subroutine vec4 getImagePosition();
 subroutine uniform getImagePosition getPositionSelection;
@@ -26,7 +28,7 @@ vec4 fromVertex3D()
 {
 	if (position4D.x == 2 || position4D.x == 0)
 	{
-		return vec4(0.0f,0.0f,0.0f,0.0f);
+		return vec4(0.0f,0.0f,10000.0f,0.0f); // hack to discard verts that we dont want, since they are beyond the clip plane now
 	}
 	else
 	{
@@ -62,6 +64,7 @@ void main()
 	//TexCoord = texCoord;
 	TexCoord = vec2(texCoordColor.x, 1 - texCoordColor.y);
 	TexColor = vec4(texture(currentTextureColor, vec2(texCoordColor.x, 1 - texCoordColor.y)));
-
-	vertCol = -positionDepth.z;
+	//TexColor = color4D;
+	vertCol = position4D.z;
+	vert4D = position4D;
 }
