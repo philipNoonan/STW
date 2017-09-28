@@ -52,16 +52,44 @@ void useCurrentValues()
     imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), vec4(currentColor.xyz, 1.0f));
 }
 
+void smoothValues()
+{
+    Position3D[(pix.y * size.x) + pix.x] = vec4(mix(currentVert.xyz, previousVert.xyz, 0.5f), 0.01f);
+    imageStore(ColorTextureCurrent, ivec2(pix.x, pix.y), vec4(mix(currentColor.xyz, previousColor.xyz, 0.5), 1.0f));
+
+
+    Position3D_prev[(pix.y * size.x) + pix.x] = vec4(mix(currentVert.xyz, previousVert.xyz, 0.5f), 0.01f);
+    imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), vec4(mix(currentColor.xyz, previousColor.xyz, 0.5f), 1.0f));
+}
+void useRed()
+{
+    Position3D[(pix.y * size.x) + pix.x] = vec4(previousVert.xyzw);
+    imageStore(ColorTextureCurrent, ivec2(pix.x, pix.y), red);
+
+
+    Position3D_prev[(pix.y * size.x) + pix.x] = vec4(previousVert.xyzw);
+    imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), red);
+}
+
+void useGreen()
+{
+    Position3D[(pix.y * size.x) + pix.x] = vec4(previousVert.xyzw);
+    imageStore(ColorTextureCurrent, ivec2(pix.x, pix.y), green);
+
+
+    Position3D_prev[(pix.y * size.x) + pix.x] = vec4(previousVert.xyzw);
+    imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), green);
+}
 
 void usePreviousValues()
 {
 
-    Position3D[(pix.y * size.x) + pix.x] = vec4(previousVert.xy, previousVert.z, previousVert.w + 0.01f);
-    imageStore(ColorTextureCurrent, ivec2(pix.x, pix.y), vec4(previousColor.xyz, previousColor.w - 0.01f));
+    Position3D[(pix.y * size.x) + pix.x] = vec4(previousVert.xy, previousVert.z, previousVert.w + 0.001f);
+    imageStore(ColorTextureCurrent, ivec2(pix.x, pix.y), vec4(previousColor.xyz, previousColor.w - (previousVert.w * previousVert.w)));
 
 
-    Position3D_prev[(pix.y * size.x) + pix.x] = vec4(previousVert.xy, previousVert.z, previousVert.w + 0.01f);
-    imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), vec4(previousColor.xyz, previousColor.w - 0.01f));
+    Position3D_prev[(pix.y * size.x) + pix.x] = vec4(previousVert.xy, previousVert.z, previousVert.w + 0.001f);
+    imageStore(ColorTexturePrevious, ivec2(pix.x, pix.y), vec4(previousColor.xyz, previousColor.w - (previousVert.w * previousVert.w)));
 
 
 }
@@ -71,6 +99,7 @@ void usePreviousValues()
 void main()
 {
     pix = gl_GlobalInvocationID.xy;
+    pix.y = pix.y + 2;
     size = ivec2(1920, 1080);
 
 
@@ -106,98 +135,63 @@ void main()
         // no : copy previous vert and colour to output
         // vec4(1.0f,0.0f,0.0f,1.0f);
 
-        if (previousVert.w > 0.2f)
+        if (currentVert.z == 0)
+        {
+            currentVert.z = 4000.0f;
+        }
+
+        if (previousVert.w > 0.14f) // hand tuned value
         {
             useCurrentValues();
         }
         else
         {
 
-            if (previousVert.z == 0 || previousVert.z > 4000.0f)
+            if (previousVert.z == 0 || previousVert.z > 8000.0f)
             {
-                previousVert.z = 4000.0f;
+                previousVert.z = 8000.0f;
             }
 
-            if (currentVert.z < (previousVert.z + 5.0f))
+            if (currentVert.z < (previousVert.z + 5.0f)) // we are foreground
             {
+                //useGreen();
                 useCurrentValues();
             }
-            else
+            else if (abs(currentVert.z - previousVert.z) < 5.0f)
             {
-                if (previousVert.w >= 0.01f) // newly not a foreground pixel
+                smoothValues();
+            }
+            else // we are background
+            {
+
+                if (previousVert.z < 3000.0f) // newly a background pixel
                 {
+
                     usePreviousValues();
+                   // useGreen();
                 }
+                else
+                {
+                    useRed();
+                }
+
+
             }
 
-            if (currentVert.z == 0 || currentVert.z > 4000) // this was the problem!!!!
-            {
-                usePreviousValues();
-            }
+          //  if (currentVert.z == 4000.0f) // this was the problem!!!!
+           // {
+
+          //      useRed();
+                
+          //  }
+           // else if (currentVert.z > 8000)
+          //  {
+           //     useGreen();
+           // }
         }
 
 
-
-        //    if (previousVert.w >= 0.2f)
-        //    {
-        //        useCurrentValues();
-        //    }
-        //    else
-        //    {
-        //        usePreviousValues();
-        //    }
-        //}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            //if (currentVert.z != 0 && currentVert.z < 8000.0f)
-            //{
-            //    if (previousVert.w == 0)
-            //    {
-            //        useCurrentValues();
-            //    }
-            //    else// if (previousVert.w > 0 && previousVert.w <= 0.2f)
-            //    {
-            //        if (currentVert.z < previousVert.z + 20.0f)
-            //        {
-            //            useCurrentValues();
-            //        }
-            //        else
-            //        {
-            //            usePreviousValues();
-            //        }
-
-            //    }
-            //}
-            //else
-            //{
-            //    if (previousVert.w > 0)
-            //    {
-            //        usePreviousValues();
-            //    }
-            //}
-
-
-
-
-
-
-
-       
-
-
-
+        
 
     }
 

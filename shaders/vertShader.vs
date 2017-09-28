@@ -15,10 +15,13 @@ uniform mat4 ViewProjection;
 uniform mat4 projection;
 uniform mat4 MVP;
 
-out vec2 TexCoord;
-out float vertCol;
-out vec4 TexColor;
-out vec4 vert4D;
+out vec2 VTexCoord;
+out float VvertCol;
+out vec4 VTexColor;
+out vec4 Vvert4D;
+out int VTextureType;
+
+int TextureType = 0;
 
 subroutine vec4 getImagePosition();
 subroutine uniform getImagePosition getPositionSelection;
@@ -26,9 +29,9 @@ subroutine uniform getImagePosition getPositionSelection;
 subroutine(getImagePosition)
 vec4 fromVertex3D()
 {
-	if (position4D.x == 2 || position4D.x == 0)
+	if (position4D.x == 2 || position4D.z == 0 || position4D.z == 4000.0f)
 	{
-		return vec4(0.0f,0.0f,10000.0f,0.0f); // hack to discard verts that we dont want, since they are beyond the clip plane now
+		return vec4(0.0f,0.0f,20000.0f,0.0f); // hack to discard verts that we dont want, since they are beyond the clip plane now
 	}
 	else
 	{
@@ -40,12 +43,14 @@ vec4 fromVertex3D()
 subroutine(getImagePosition)
 vec4 fromDepth2D()
 {
+	TextureType = 1;
 	return vec4(MVP * vec4(positionDepth, 1.0f));
 }
 
 subroutine(getImagePosition)
 vec4 fromColor2D()
 {
+	TextureType = 1;
 	return vec4(MVP * vec4(positionColor, 1.0f));
 }
 
@@ -62,9 +67,10 @@ void main()
 	//gl_PointSize = 2.0f;
 	// We swap the y-axis by substracing our coordinates from 1. This is done because most images have the top y-axis inversed with OpenGL's top y-axis.
 	//TexCoord = texCoord;
-	TexCoord = vec2(texCoordColor.x, 1 - texCoordColor.y);
-	TexColor = vec4(texture(currentTextureColor, vec2(texCoordColor.x, 1 - texCoordColor.y)));
+	VTexCoord = vec2(texCoordColor.x, 1 - texCoordColor.y);
+	VTexColor = vec4(texture(currentTextureColor, vec2(texCoordColor.x, 1 - texCoordColor.y)));
 	//TexColor = color4D;
-	vertCol = position4D.z;
-	vert4D = position4D;
+	VvertCol = position4D.z;
+	Vvert4D = position4D;
+	VTextureType = TextureType;
 }

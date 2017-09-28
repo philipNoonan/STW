@@ -45,8 +45,8 @@ vec4 fromBigDepth()
 subroutine(getColor)
 vec4 fromColor()
 {
-
-	return vec4(texture(currentTextureColor, TexCoord));
+	//return vec4(texture(currentTextureColor, TexCoord));
+	return vec4(1.0f,0.0f,0.0f,1.0f);
 }
 
 subroutine(getColor)

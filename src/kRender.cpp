@@ -134,7 +134,7 @@ GLFWwindow * kRender::loadGLFWWindow()
 	glfwWindowHint(GLFW_RESIZABLE, GL_TRUE);
 	glEnable(GL_DEPTH_TEST);
 
-	m_window = glfwCreateWindow(m_screen_width, m_screen_height, "SDFFusion", nullptr, nullptr);
+	m_window = glfwCreateWindow(m_screen_width, m_screen_height, "STW", nullptr, nullptr);
 
 	if (m_window == nullptr)
 	{
@@ -222,6 +222,7 @@ void kRender::compileAndLinkShader()
 	try {
 		renderProg.compileShader("shaders/vertShader.vs");
 		renderProg.compileShader("shaders/fragShader.fs");
+		renderProg.compileShader("shaders/filterVerts.gs");
 		renderProg.link();
 
 		computeProg.compileShader("shaders/compute3D.cs");
@@ -229,6 +230,9 @@ void kRender::compileAndLinkShader()
 
 		filterProg.compileShader("shaders/filter3D.cs");
 		filterProg.link();
+
+		filterGapsProg.compileShader("shaders/filterGaps.cs");
+		filterGapsProg.link();
 
 		edgeProg.compileShader("shaders/sobelEdge.cs");
 		edgeProg.link();
@@ -238,6 +242,14 @@ void kRender::compileAndLinkShader()
 
 		v2nProg.compileShader("shaders/vertexTonormal.cs");
 		v2nProg.link();
+
+		integrateTSDFProg.compileShader("shaders/integrateTSDF.cs");
+		integrateTSDFProg.link();
+
+		raycastTSDFProg.compileShader("shaders/raycastTSDF.cs");
+		raycastTSDFProg.link();
+
+
 	}
 	catch (GLSLProgramException &e) {
 		std::cerr << e.what() << std::endl;
@@ -282,8 +294,22 @@ void kRender::setLocations()
 	m_invkID = glGetUniformLocation(computeProg.getHandle(), "invK");
 	m_camPamsID = glGetUniformLocation(computeProg.getHandle(), "camPams");
 
-	
 
+	// LOCATIONS FOR TSDF
+	m_invTrackID = glGetUniformLocation(integrateTSDFProg.getHandle(), "invTrack");
+	m_KID = glGetUniformLocation(integrateTSDFProg.getHandle(), "K");
+	m_muID = glGetUniformLocation(integrateTSDFProg.getHandle(), "mu");
+	m_maxWeightID = glGetUniformLocation(integrateTSDFProg.getHandle(), "maxWeight");
+	m_volDimID = glGetUniformLocation(integrateTSDFProg.getHandle(), "volDim");
+	m_volSizeID = glGetUniformLocation(integrateTSDFProg.getHandle(), "volSize");
+
+	m_viewID_r = glGetUniformLocation(raycastTSDFProg.getHandle(), "view");
+	m_nearPlaneID = glGetUniformLocation(raycastTSDFProg.getHandle(), "nearPlane");
+	m_farPlaneID = glGetUniformLocation(raycastTSDFProg.getHandle(), "farPlane");
+	m_stepID = glGetUniformLocation(raycastTSDFProg.getHandle(), "step");
+	m_largeStepID = glGetUniformLocation(raycastTSDFProg.getHandle(), "largeStep");
+	m_volDimID_r = glGetUniformLocation(raycastTSDFProg.getHandle(), "volDim");
+	m_volSizeID_r = glGetUniformLocation(raycastTSDFProg.getHandle(), "volSize");
 
 }
 
@@ -399,7 +425,13 @@ void kRender::setVertPositions()
 
 }
 
+void kRender::setVolume()
+{
+	std::vector<float> volume;
+	volume.resize(256 * 256 * 256 * 2, 0);
 
+	m_volume = volume;
+}
 
 
 void kRender::setTextures()
@@ -496,11 +528,6 @@ void kRender::setTextures()
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO_BD);
 	glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_indexBigDepthPointCloud.size() * sizeof(unsigned int), &m_indexBigDepthPointCloud[0], GL_STATIC_DRAW);
 
-	// color array for each vert
-	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth);
-	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buf_Pointcloud_RGB_big_depth); // binding location 1 inside the compute shader it hink
-	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB[0], GL_DYNAMIC_DRAW);
-
 	// set up for pointcloud SSBO
 	glGenBuffers(1, &m_buf_Pointcloud_big_depth_curr);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_buf_Pointcloud_big_depth_curr); // binding location 2 inside the compute shader it hink
@@ -510,15 +537,6 @@ void kRender::setTextures()
 	glGenBuffers(1, &m_buf_Pointcloud_big_depth_prev);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, m_buf_Pointcloud_big_depth_prev); // binding location 3inside the compute shader it hink
 	glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloud_prev.size() * sizeof(float), &m_verticesBigDepthPointcloud_prev[0], GL_DYNAMIC_DRAW);
-
-	// color array for each vert
-	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth_curr);
-	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, m_buf_Pointcloud_RGB_big_depth_curr); // binding location 4 inside the compute shader it hink
-	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB_curr.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB_curr[0], GL_DYNAMIC_DRAW);
-
-	//glGenBuffers(1, &m_buf_Pointcloud_RGB_big_depth_prev);
-	//glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, m_buf_Pointcloud_RGB_big_depth_prev); // binding location 4 inside the compute shader it hink
-	//glBufferData(GL_SHADER_STORAGE_BUFFER, m_verticesBigDepthPointcloudRGB_prev.size() * sizeof(float), &m_verticesBigDepthPointcloudRGB_prev[0], GL_DYNAMIC_DRAW);
 
 	glGenBuffers(1, &m_buf_color_big_depth_map);
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
@@ -532,10 +550,6 @@ void kRender::setTextures()
 	glBindBuffer(GL_ARRAY_BUFFER, m_buf_color_big_depth_map);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, 0);
 	glEnableVertexAttribArray(1);
-
-	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud_RGB_big_depth);
-	glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 0, 0); //  binding loc 6
-	glEnableVertexAttribArray(6); // binding loc 6
 
 	glBindVertexArray(0);
 
@@ -631,6 +645,17 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
 
+// Texture Current Color Generate
+glGenTextures(1, &m_textureColorCurrent);
+glActiveTexture(GL_TEXTURE9);
+glBindTexture(GL_TEXTURE_2D, m_textureColorCurrent); // All upcoming GL_TEXTURE_2D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	// Set texture wrapping to GL_REPEAT
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+glBindTexture(GL_TEXTURE_2D, 0);
+
 
 // Texture detected edges
 glGenTextures(1, &m_textureEdges);
@@ -642,6 +667,18 @@ glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 glBindTexture(GL_TEXTURE_2D, 0);
+
+// Texture for TSDF volume 
+glGenTextures(1, &m_textureVolume);
+glActiveTexture(GL_TEXTURE10);
+glBindTexture(GL_TEXTURE_3D, m_textureVolume); // All upcoming GL_TEXTURE_3D operations now have effect on our texture object
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage3D(GL_TEXTURE_3D, 0, GL_RG32F, 256, 256, 256, 0, GL_RG, GL_FLOAT, &m_volume[0]);
+glBindTexture(GL_TEXTURE_3D, 0);
+
 
 // Texture Vertex3D
 glGenTextures(1, &m_textureVertex);
@@ -789,11 +826,14 @@ void kRender::setBuffersForRendering(float * depthArray, float * bigDepthArray, 
 	}
 
 
-	if (colorArray != NULL)
+	if (m_showColorFlag || colorArray != NULL)
 	{
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, m_textureColor);
-		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
+		if (colorArray != NULL)
+		{
+			glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_color_width, m_color_height, GL_BGRA, GL_UNSIGNED_BYTE, colorArray);
+		}
 	}
 
 
@@ -1210,7 +1250,6 @@ void kRender::filterDepth(bool useBigDepth)
 }
 
 
-
 void kRender::computeDepthToVertex(bool useBigDepth)
 {
 	// get inverse camera matrix
@@ -1288,6 +1327,90 @@ void kRender::computeVertexToNormal(bool useBigDepth)
 	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
+void kRender::integrateVolume()
+{
+	glm::mat4 pose = glm::mat4(1);
+	glm::mat4 K = getCameraMatrix(m_cameraParams_color); // make sure im set
+	float mu = 0.1f;
+	float maxWeight = 100.0f;
+	glm::vec3 volDim = glm::vec3(256, 256, 256);
+	glm::vec3 volSize = glm::vec3(1.0f, 1.0f, 1.0f);
+
+	//bind image textures
+	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG16I);
+	glBindImageTexture(1, m_textureBigDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
+
+	glUniformMatrix4fv(m_invTrackID, 1, GL_FALSE, glm::value_ptr(pose));
+	glUniformMatrix4fv(m_KID, 1, GL_FALSE, glm::value_ptr(K));
+	glUniform1f(m_muID, mu);
+	glUniform1f(m_maxWeightID, maxWeight);
+	glUniform3fv(m_volDimID, 1, glm::value_ptr(volDim));
+	glUniform3fv(m_volSizeID, 1, glm::value_ptr(volSize));
+
+
+	int xWidth;
+	int yWidth;
+
+	integrateTSDFProg.use();
+
+	xWidth = divup(256, 32);
+	yWidth = divup(256, 32);
+
+
+	glDispatchCompute(xWidth, yWidth, 1);
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
+
+}
+
+void kRender::raycastVolume()
+{
+
+	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams_color); // make sure im set
+	glm::mat4 pose = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0));
+
+	glm::mat4 view = pose * invK;
+	float nearPlane = 0.01f;
+	float farPlane = 4.0f;
+	float step = 256.0f / 1.0f; // this needs to be fixed -> float stepSize() const { return min(volumeDimensions) / max(volumeSize); }          // step size for raycasting
+	float largeStep = 0.75f * 0.1f; // 0.1f == mu from above
+	glm::vec3 volDim = glm::vec3(256, 256, 256);
+	glm::vec3 volSize = glm::vec3(1.0f, 1.0f, 1.0f);
+
+	//bind image textures
+	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG16I);
+
+	// bind the volume texture for 3D sampling
+	//glActiveTexture(GL_TEXTURE0);
+	//glBindTexture(GL_TEXTURE_3D, m_textureVolume);
+
+	// bind uniforms
+	glUniformMatrix4fv(m_viewID_r, 1, GL_FALSE, glm::value_ptr(view));
+	glUniform1f(m_nearPlaneID, nearPlane);
+	glUniform1f(m_farPlaneID, farPlane);
+	glUniform1f(m_stepID, step);
+	glUniform1f(m_largeStepID, largeStep);
+	glUniform3fv(m_volDimID_r, 1, glm::value_ptr(volDim));
+	glUniform3fv(m_volSizeID_r, 1, glm::value_ptr(volSize));
+
+	int xWidth;
+	int yWidth;
+
+	raycastTSDFProg.use();
+
+	xWidth = divup(256, 32);
+	yWidth = divup(256, 32);
+
+
+	glDispatchCompute(xWidth, yWidth, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+}
+
+
+
+
+
+
 void kRender::computeEdges()
 {
 	// bind input color image to 0
@@ -1321,8 +1444,6 @@ void kRender::computeBlur(bool useBigDepth)
 
 	if (useBigDepth)
 	{
-		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
 
 		glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_big_depth);
 		glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_big_depth_curr);
@@ -1330,27 +1451,21 @@ void kRender::computeBlur(bool useBigDepth)
 
 		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
-		//glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_RGB_big_depth);
-		//glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_RGB_big_depth_curr);
-		//glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, 1920 * 1082 * 4 * sizeof(float));
-
-		//glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
 
 
-		//glCopyImageSubData(m_textureColor, GL_TEXTURE_2D, 0, 0, 0, 0,
-		//	m_textureColorPrevious, GL_TEXTURE_2D, 0, 0, 0, 0,
-		//	m_color_width, m_color_height, 1);
+		glCopyImageSubData(m_textureColor, GL_TEXTURE_2D, 0, 0, 0, 0,
+			m_textureColorCurrent, GL_TEXTURE_2D, 0, 0, 0, 0,
+			m_color_width, m_color_height, 1);
+
+
 
 		glBindTexture(GL_TEXTURE_2D, m_textureColorPrevious);
 		glBindImageTexture(0, m_textureColorPrevious, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
 
-		glBindTexture(GL_TEXTURE_2D, m_textureColor);
-		glBindImageTexture(1, m_textureColor, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+		glBindTexture(GL_TEXTURE_2D, m_textureColorCurrent);
+		glBindImageTexture(1, m_textureColorCurrent, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
 
-		//glBindImageTexture(0, m_textureBigVertex_prev, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-		//glBindImageTexture(1, m_textureBigVertex_curr, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
-		//glBindImageTexture(2, m_textureBigVertex, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F);
 
 
 		currentDepthProg.use();
@@ -1365,24 +1480,42 @@ void kRender::computeBlur(bool useBigDepth)
 
 
 
-		//glBindBuffer(GL_COPY_READ_BUFFER, m_buf_Pointcloud_big_depth);
-		//glBindBuffer(GL_COPY_WRITE_BUFFER, m_buf_Pointcloud_big_depth_prev);
-		//glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0, 1920 * 1082 * 4 * sizeof(float));
-
-		//glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
 
 
 	}
 
-	// copy current buffer to previous buffer
-	//GLuint tBuf1 = m_buf_Pointcloud_big_depth_curr;
-	//m_buf_Pointcloud_big_depth_curr = m_buf_Pointcloud_big_depth_prev;
-	//m_buf_Pointcloud_big_depth_prev = tBuf1;
+
 
 }
 
 
 
+void kRender::filterGaps()
+{
+	int xWidth;
+	int yWidth;
+
+
+	glBindTexture(GL_TEXTURE_2D, m_textureColorPrevious);
+	glBindImageTexture(0, m_textureColorPrevious, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+	glBindTexture(GL_TEXTURE_2D, m_textureColorCurrent);
+	glBindImageTexture(1, m_textureColorCurrent, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA8);
+
+
+
+
+	filterGapsProg.use();
+
+	xWidth = divup(m_color_width, 5);
+	yWidth = divup(m_color_height, 5);
+
+	glDispatchCompute(xWidth, yWidth, 1);
+	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+
+
+
+}
 
 
 
@@ -1403,7 +1536,7 @@ void kRender::renderPointCloud(bool useBigDepth)
 
 		// bind the color texture for color sampling
 		glActiveTexture(GL_TEXTURE2);
-		glBindTexture(GL_TEXTURE_2D, m_textureColor);
+		glBindTexture(GL_TEXTURE_2D, m_textureColorCurrent);
 
 		/*glActiveTexture(GL_TEXTURE5);
 		glBindTexture(GL_TEXTURE_2D, m_textureNormal);*/
@@ -1430,7 +1563,7 @@ void kRender::renderPointCloud(bool useBigDepth)
 			//glPointSize(1.0f);
 			glBindVertexArray(m_VAO_BD);
 
-			glDrawElements(GL_LINES, 1920 * 1082 * 6, GL_UNSIGNED_INT, 0);
+			glDrawElements(GL_TRIANGLES, 1920 * 1082 * 6, GL_UNSIGNED_INT, 0);
 
 			//glDrawArrays(GL_POINTS, 0, 1920 * 1082);
 			glBindVertexArray(0);
@@ -1493,8 +1626,51 @@ void kRender::getDepthPoints3D()
 			m_depthPixelPoints2D.pop_back();
 		}
 	}
+
+	//if (m_export_ply)
+	//{
+	//	writePLYFloat(PC, NC, "./outPC.ply");
+	//	setExportPly(false);
+	//}
+
 }
 
+void kRender::exportPointCloud()
+{
+	////// This works for grabbing the buffer from the compute3D shader and copying to host memory
+	std::vector<float> PC;
+	PC.resize(1920 * 1082 * 4);
+	std::vector<float> NC;
+	NC.resize(1920 * 1082 * 4);
+	glBindBuffer(GL_ARRAY_BUFFER, m_buf_Pointcloud_big_depth);
+	void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+	memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
+	//// int oneDindex = (row * length_of_row) + column; // Indexes
+	glUnmapBuffer(GL_ARRAY_BUFFER);
+
+
+	writePLYFloat(PC, NC, "./outPC.ply");
+	setExportPly(false);
+	
+}
+
+void kRender::exportVolume()
+{
+	//////// This works for grabbing the buffer from the compute3D shader and copying to host memory
+	//std::vector<short> vol;
+	//vol.resize(256 * 256 * 256 * 2);
+
+	//glBindBuffer(GL_ARRAY_BUFFER, m_textureVolume);
+	//void *ptr = glMapBuffer(GL_ARRAY_BUFFER, GL_READ_ONLY);
+	//memcpy_s(PC.data(), PC.size() * sizeof(float), ptr, PC.size() * sizeof(float));
+	////// int oneDindex = (row * length_of_row) + column; // Indexes
+	//glUnmapBuffer(GL_ARRAY_BUFFER);
+
+
+	//writePLYFloat(PC, NC, "./outPC.ply");
+	//setExportPly(false);
+
+}
 
 
 //
@@ -1553,11 +1729,7 @@ void kRender::getDepthPoints3D()
 //
 //
 //
-//	if (m_export_ply)
-//	{
-//		writePLYFloat(PC, NC, "./outPC.ply");
-//		setExportPly(false);
-//	}
+
 //
 //	/// This was to see if the rvec and tvec from solvepnp appear to get the same color coords as when checking from the depth to color mapping table
 //	//if (m_depthPixelPoints2D.size() > 4)
@@ -1868,7 +2040,7 @@ void kRender::writePLYFloat(std::vector<float> PC, std::vector<float> NC, const 
 	// Header
 	////
 	
-	const int pointNum = 512*424;
+	const int pointNum = 1920*1082;
 	const int vertNum = 6;
 
 	outFile << "ply" << std::endl;
@@ -1889,7 +2061,7 @@ void kRender::writePLYFloat(std::vector<float> PC, std::vector<float> NC, const 
 	// Points
 	////
 
-	for (int pi = 0; pi < m_verticesPointcloud.size()-2; pi+=4)
+	for (int pi = 0; pi < m_verticesBigDepthPointcloud.size()-2; pi+=4)
 	{
 
 		outFile << PC[pi] << " " << PC[pi+1] << " " << PC[pi+2] << " " << NC[pi] << " " << NC[pi+1] << " " << NC[pi+2] << std::endl;

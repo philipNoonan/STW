@@ -17,10 +17,10 @@ layout(std430, binding=0) buffer pos3D
 {
     vec4 Position3D[];
 };
-layout(std430, binding= 1) buffer color3D
-{
-    vec4 Color3D [];
-};
+//layout(std430, binding= 1) buffer color3D
+//{
+//    vec4 Color3D [];
+//};
 
 
 vec3 rotate(mat4 inputMat4, vec3 inputVec3)
@@ -36,6 +36,7 @@ void main()
 {
     uvec2 pix = gl_GlobalInvocationID.xy;
     ivec2 size = imageSize(InputImage);
+    pix.y = pix.y += 2;
 
     float x;
     float y;
@@ -55,7 +56,7 @@ void main()
         // vec3 tPos = depth.x * rotate(invK, vec3(pix.x, pix.y, 1.0f));
         imageStore(OutputImage, ivec2(pix.x, pix.y), vec4(x, y, z, 0.0f));
         Position3D[(pix.y * size.x) + pix.x] = vec4(x, y, z, 0.0f);
-        Color3D[(pix.y * size.x) + pix.x] = vec4(color.xyz,0); // FIX ME DONT USE FLOAT £" FOR COLOR USE BYTES!!!
+        //Color3D[(pix.y * size.x) + pix.x] = vec4(color.xyz,0); // FIX ME DONT USE FLOAT £" FOR COLOR USE BYTES!!!
             //Position3D[(pix.x * size.x) + pix.y] = vec3(pix.x / 100.0f, pix.y / 100.0f, -depth / 100.0f);
 
         //}

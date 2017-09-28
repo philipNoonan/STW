@@ -23,6 +23,7 @@ float checkPixel(vec4 imageValue)
 void main()
 {
     uvec2 pix = gl_GlobalInvocationID.xy;
+    pix.y = pix.y += 2;
     ivec2 size = imageSize(InputImage);
     float validPixels = 9.0f;
     float depthSum = 0.0f;

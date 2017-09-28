@@ -36,191 +36,207 @@
 
 class kRender
 {
-	public:
-		kRender()
-			: m_window()
-			, m_show_imgui(true)
-			, m_screen_height(1080)
-			, m_screen_width(1920)
-			, m_depth_height(424)
-			, m_depth_width(512)
-			, m_color_height(1080)
-			, m_color_width(1920)
-			, m_big_depth_height(1082)
-			, m_big_depth_width(1920)
-			, m_VAO()
-			, m_VBO_Color()
-			, m_VBO_Depth()
-			, m_EBO()
-			, m_gui_padding(std::make_pair<int,int>(50, 50))
-			, m_render_scale_height(1.0f)
-			, m_render_scale_width(1.0f)
-			//, m_graph_points_x()
-			//, m_graph_points_y()
-			//, m_graph_points_z()
-			//, m_graph_points_long_x()
-			//, m_graph_points_long_y()
-			//, m_graph_points_long_z()
-			//, m_graph_vector_x()
-		{}
-		~kRender();
+public:
+	kRender()
+		: m_window()
+		, m_show_imgui(true)
+		, m_screen_height(1080)
+		, m_screen_width(1920)
+		, m_depth_height(424)
+		, m_depth_width(512)
+		, m_color_height(1080)
+		, m_color_width(1920)
+		, m_big_depth_height(1082)
+		, m_big_depth_width(1920)
+		, m_VAO()
+		, m_VBO_Color()
+		, m_VBO_Depth()
+		, m_EBO()
+		, m_gui_padding(std::make_pair<int, int>(50, 50))
+		, m_render_scale_height(1.0f)
+		, m_render_scale_width(1.0f)
+		//, m_graph_points_x()
+		//, m_graph_points_y()
+		//, m_graph_points_z()
+		//, m_graph_points_long_x()
+		//, m_graph_points_long_y()
+		//, m_graph_points_long_z()
+		//, m_graph_vector_x()
+	{}
+	~kRender();
 
-		GLFWwindow * window()
-		{
-			return m_window;
-		}
-		
-		void SetCallbackFunctions();
+	GLFWwindow * window()
+	{
+		return m_window;
+	}
 
-		bool showImgui()
-		{
-			return m_show_imgui;
-		}
+	void SetCallbackFunctions();
 
-		float renderScaleHeight()
-		{
-			return m_render_scale_height;
-		}
-		void renderScaleHeight(float scale)
-		{
-			m_render_scale_height = scale;
-		}
-		float renderScaleWidth()
-		{
-			return m_render_scale_width;
-		}
-		void renderScaleWidth(float scale)
-		{
-			m_render_scale_width = scale;
-		}
+	bool showImgui()
+	{
+		return m_show_imgui;
+	}
 
-		//std::vector<float> graphPointsX()
-		//{
-		//	return m_graph_vector_x;
-		//}
+	float renderScaleHeight()
+	{
+		return m_render_scale_height;
+	}
+	void renderScaleHeight(float scale)
+	{
+		m_render_scale_height = scale;
+	}
+	float renderScaleWidth()
+	{
+		return m_render_scale_width;
+	}
+	void renderScaleWidth(float scale)
+	{
+		m_render_scale_width = scale;
+	}
 
-
-		std::pair<int, int> guiPadding()
-		{
-			return std::make_pair<int, int> (m_gui_padding.first * m_render_scale_width, m_gui_padding.second * m_render_scale_height);
-		}
-
-		std::vector<float> getDepthPoints()
-		{
-			return m_depthPointsFromBuffer;
-		}
-
-		void getDepthPoints3D();
-
-		void getMouseClickPositionsDepth();
-
-		void anchorMW(std::pair<int, int> anchor)
-		{
-			m_anchorMW = std::make_pair<int, int> ((float)anchor.first * m_render_scale_width, (float)anchor.second * m_render_scale_height);
-		}
-		void anchorSG(std::pair<int, int> anchor)
-		{
-			m_anchorSG = anchor;
-		}
-		void anchorAS(std::pair<int, int> anchor)
-		{
-			m_anchorAS = anchor;
-		}
-		GLFWwindow * loadGLFWWindow();
-
-		void compileAndLinkShader();
-		void requestShaderInfo();
-		void setLocations();
-		void setVertPositions();
-		void setTextures();
-
-		//void setWindowPositions();
-		//void setWindowPositions(std::pair<int, int> anchorMW, std::pair<int, int> anchorAS, std::pair<int, int> anchorSG);
-		void setWindowLayout();
-		void setupComputeFBO();
-
-		// The correcter way 
-		void setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag,  bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag, bool showEdgesFlag);
-		void setBuffersForRendering(float * depthArray, float * bigDepthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
-		void setDepthImageRenderPosition();
-		void setColorImageRenderPosition(float vertFov);
-		void setInfraImageRenderPosition();
-		void setFlowImageRenderPosition();
-		void setPointCloudRenderPosition(float modelZ);
-		void setLightModelRenderPosition();
-		void setViewMatrix(float xRot, float yRot, float zRot, float xTran, float yTran, float zTran);
-		void setProjectionMatrix();
-
-		void setColorDepthMapping(int* colorDepthMap);
-		void renderLiveVideoWindow();
+	//std::vector<float> graphPointsX()
+	//{
+	//	return m_graph_vector_x;
+	//}
 
 
+	std::pair<int, int> guiPadding()
+	{
+		return std::make_pair<int, int>(m_gui_padding.first * m_render_scale_width, m_gui_padding.second * m_render_scale_height);
+	}
 
-		void renderFlow(unsigned char* flowPtr);
-		void drawPoints();
-		void drawLightModel();
-		void setComputeWindowPosition();
+	std::vector<float> getDepthPoints()
+	{
+		return m_depthPointsFromBuffer;
+	}
 
-		void setCameraParams(glm::vec4 camPams, glm::vec4 camPamsColor)
-		{
-			m_cameraParams = camPams;
-			m_cameraParams_color = camPamsColor;
-		}
+	void getDepthPoints3D();
 
-		std::vector<std::pair<int, int>> getDepthPoints2D()
-		{
-			return m_depthPixelPoints2D;
-		}
-		void labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap);
-		void setRegistrationMatrix(glm::mat4 reg);
-		void resetRegistrationMatrix();
-		void setExportPly(bool opt)
-		{
-			m_export_ply = opt;
-		}
-		//void setGraphPoints(int size, float valueX, float valueY, float valueZ);
-		//void updateGraphPoints(float valueX, float valueY, float valueZ);
+	void getMouseClickPositionsDepth();
 
-		void setRVec(cv::Mat rvec)
-		{
-			rotation_vector = rvec;
-		}
-		void setTVec(cv::Mat tvec)
-		{
-			translation_vector = tvec;
-		}
-		void setIrBrightness(float irL, float irH)
-		{
-			m_ir_low = irL;
-			m_ir_high = irH;
-		}
+	void anchorMW(std::pair<int, int> anchor)
+	{
+		m_anchorMW = std::make_pair<int, int>((float)anchor.first * m_render_scale_width, (float)anchor.second * m_render_scale_height);
+	}
+	void anchorSG(std::pair<int, int> anchor)
+	{
+		m_anchorSG = anchor;
+	}
+	void anchorAS(std::pair<int, int> anchor)
+	{
+		m_anchorAS = anchor;
+	}
+	GLFWwindow * loadGLFWWindow();
 
-		void setFov(float fov)
-		{
-			m_vertFov = fov;
-		}
+	void compileAndLinkShader();
+	void requestShaderInfo();
+	void setLocations();
+	void setVertPositions();
+	void setTextures();
 
-		void setCheckerBoardPointsColor(std::vector<cv::Point2f> pointsColor);
-		void setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra);
+	//void setWindowPositions();
+	//void setWindowPositions(std::pair<int, int> anchorMW, std::pair<int, int> anchorAS, std::pair<int, int> anchorSG);
+	void setWindowLayout();
+	void setupComputeFBO();
 
-		// compute shader time
-		void filterDepth(bool useBigDepth = false);
-		void computeDepthToVertex(bool useBigDepth = false);
-		void computeVertexToNormal(bool useBigDepth = false);
-		void computeEdges();
-		void computeBlur(bool useBigDepth = false);
-		void renderPointCloud(bool useBigDepth = false);
+	// The correcter way 
+	void setRenderingOptions(bool showDepthFlag, bool showBigDepthFlag, bool showInfraFlag, bool showColorFlag, bool showLightFlag, bool showPointFlag, bool showFlowFlag, bool showEdgesFlag);
+	void setBuffersForRendering(float * depthArray, float * bigDepthArray, float * colorArray, float * infraArray, unsigned char * flowPtr);
+	void setDepthImageRenderPosition();
+	void setColorImageRenderPosition(float vertFov);
+	void setInfraImageRenderPosition();
+	void setFlowImageRenderPosition();
+	void setPointCloudRenderPosition(float modelZ);
+	void setLightModelRenderPosition();
+	void setViewMatrix(float xRot, float yRot, float zRot, float xTran, float yTran, float zTran);
+	void setProjectionMatrix();
 
-		void cleanUp();
+	void setColorDepthMapping(int* colorDepthMap);
+	void renderLiveVideoWindow();
+
+
+
+	void renderFlow(unsigned char* flowPtr);
+	void drawPoints();
+	void drawLightModel();
+	void setComputeWindowPosition();
+
+	void setCameraParams(glm::vec4 camPams, glm::vec4 camPamsColor)
+	{
+		m_cameraParams = camPams;
+		m_cameraParams_color = camPamsColor;
+	}
+
+	std::vector<std::pair<int, int>> getDepthPoints2D()
+	{
+		return m_depthPixelPoints2D;
+	}
+	void labelDepthPointsOnColorImage(float* depthArray, int* colorDepthMap);
+	void setRegistrationMatrix(glm::mat4 reg);
+	void resetRegistrationMatrix();
+	void setExportPly(bool opt)
+	{
+		m_export_ply = opt;
+	}
+	//void setGraphPoints(int size, float valueX, float valueY, float valueZ);
+	//void updateGraphPoints(float valueX, float valueY, float valueZ);
+
+	void setRVec(cv::Mat rvec)
+	{
+		rotation_vector = rvec;
+	}
+	void setTVec(cv::Mat tvec)
+	{
+		translation_vector = tvec;
+	}
+	void setIrBrightness(float irL, float irH)
+	{
+		m_ir_low = irL;
+		m_ir_high = irH;
+	}
+
+	void setFov(float fov)
+	{
+		m_vertFov = fov;
+	}
+
+	void setCheckerBoardPointsColor(std::vector<cv::Point2f> pointsColor);
+	void setCheckerBoardPointsInfra(std::vector<cv::Point2f> pointsInfra);
+
+	void exportPointCloud();
+
+	// compute shader time
+	void filterDepth(bool useBigDepth = false);
+	void filterGaps();
+	void computeDepthToVertex(bool useBigDepth = false);
+	void computeVertexToNormal(bool useBigDepth = false);
+	void computeEdges();
+	void computeBlur(bool useBigDepth = false);
+	void renderPointCloud(bool useBigDepth = false);
+
+	// TSDF STUFF
+	void setVolume();
+	void integrateVolume();
+	void raycastVolume();
+	void exportVolume();
+
+
+	void cleanUp();
 
 private:
 
 	GLSLProgram renderProg;
 	GLSLProgram computeProg;
 	GLSLProgram filterProg;
+	GLSLProgram filterGapsProg;
 	GLSLProgram edgeProg;
 	GLSLProgram currentDepthProg;
 	GLSLProgram v2nProg;
+
+	GLSLProgram integrateTSDFProg;
+	GLSLProgram raycastTSDFProg;
+
+
 
 	GLFWwindow * m_window;
 	bool m_show_imgui;
@@ -246,6 +262,14 @@ private:
 	GLuint m_VAO_Pointcloud;
 	GLuint m_buf_Pointcloud;
 	GLuint m_buf_color_depth_map;
+
+	std::vector<float> m_volume;
+	GLuint m_textureVolume;
+
+
+
+
+
 	std::vector<float> m_verticesBigDepthPointcloud;
 
 	//std::vector<float> m_verticesBigDepthPointcloudRGB;
@@ -300,6 +324,22 @@ private:
 	GLuint m_invkID;
 	GLuint m_camPamsID;
 
+	// LOCATIONS FOR TSDF
+	GLuint m_invTrackID;
+	GLuint m_KID;
+	GLuint m_muID;
+	GLuint m_maxWeightID;
+	GLuint m_volDimID;
+	GLuint m_volSizeID;
+
+	GLuint m_viewID_r;
+	GLuint m_nearPlaneID;
+	GLuint m_farPlaneID;
+	GLuint m_stepID;
+	GLuint m_largeStepID;
+	GLuint m_volDimID_r;
+	GLuint m_volSizeID_r;
+
 
 	//textures
 	GLuint m_textureDepth;
@@ -308,6 +348,7 @@ private:
 	GLuint m_textureFilteredBigDepth;
 	GLuint m_textureInfra;
 	GLuint m_textureColor;
+	GLuint m_textureColorCurrent;
 	GLuint m_textureColorPrevious;
 	GLuint m_textureFlow;
 	GLuint m_textureDepthPrevious;
@@ -357,6 +398,17 @@ private:
 
 		return invK;
 	}
+
+	glm::mat4 getCameraMatrix(const glm::vec4 & k) {
+		glm::mat4 K;
+		K[0] = glm::vec4(k.x, 0, k.z, 0);
+		K[1] = glm::vec4(0, k.y, k.w, 0);
+		K[2] = glm::vec4(0, 0, 1, 0);
+		K[3] = glm::vec4(0, 0, 0, 1);
+		return K;
+	}
+
+
 
 	inline int divup(int a, int b) { return (a % b != 0) ? (a / b + 1) : (a / b); }
 

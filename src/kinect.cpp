@@ -18,6 +18,7 @@ void kRenderInit()
 	// Set locations
 	krender.setLocations();
 	krender.setVertPositions();
+	krender.setVolume(); // make this have input vol size and dim
 	krender.setTextures();
 	//krender.setGraphPoints(2000, 500.0f, 500.0f, 500.0f);
 	krender.anchorMW(std::make_pair<int, int>(1920 - 512 - krender.guiPadding().first, krender.guiPadding().second));
@@ -365,7 +366,8 @@ int main(int, char**)
 				if (ImGui::Button("Select depth points")) select_depth_points_mode ^= 1; ImGui::SameLine();
 				if (ImGui::Button("Reset Depth")) krender.resetRegistrationMatrix();
 
-				if (ImGui::Button("Export PLY")) krender.setExportPly(true);
+				//if (ImGui::Button("Export PLY")) krender.setExportPly(true);
+				if (ImGui::Button("Export PLY")) krender.exportPointCloud();
 				if (ImGui::Button("Save Color")) OCVStuff.saveImage(0); // saving color image (flag == 0)
 
 
@@ -460,10 +462,13 @@ int main(int, char**)
 
 
 				// compute time
-				krender.filterDepth(showBigDepthFlag);
-				krender.computeDepthToVertex(showBigDepthFlag);
-				krender.computeVertexToNormal(showBigDepthFlag);
-				krender.computeBlur(showBigDepthFlag);
+				//krender.filterDepth(showBigDepthFlag);
+				//krender.computeDepthToVertex(showBigDepthFlag);
+				//krender.computeVertexToNormal(showBigDepthFlag);
+				//krender.computeBlur(showBigDepthFlag);
+				//krender.filterGaps();
+				krender.integrateVolume();
+				krender.raycastVolume();
 
 				krender.renderLiveVideoWindow();
 
