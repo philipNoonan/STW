@@ -2,7 +2,7 @@
 
 layout(local_size_x = 32, local_size_y = 32) in;
 
-layout(binding = 0, rg16i) uniform iimage3D volumeData; // Gimage3D, where G = i, u, or blank, for int, u int, and floats respectively
+layout(binding = 0, rg32f) uniform image3D volumeData; // Gimage3D, where G = i, u, or blank, for int, u int, and floats respectively
 layout(binding = 1, r32f) uniform image2D depthImage;
 
 uniform mat4 invTrack;
@@ -24,7 +24,7 @@ vec3 rotate(mat4 inputMat4, vec3 inputVec3)
                 dot(inputMat4[2].xyz, inputVec3));
 }
 
-vec3 opMul(mat4 M, vec3 v)
+vec3 opMul(mat4 M, vec3 v) // this needs to be transposed or moved
 {
     return vec3(
         dot(M[0].xyz, v) + M[0].w,
@@ -34,13 +34,16 @@ vec3 opMul(mat4 M, vec3 v)
 
 vec4 vs(uvec3 pos)
 {
-    ivec4 data = imageLoad(volumeData, ivec3(pos));
-    return vec4(data.x * 0.00003051944088f, data.y, data.zw); // convert short to float
+    vec4 data = imageLoad(volumeData, ivec3(pos));
+    // return vec4(data.x * 0.00003051944088f, data.y, data.zw); // convert short to float
+    return data;
 }
 
 void set(uvec3 pos, vec4 data)
 {
-    imageStore(volumeData, ivec3(pos), ivec4(data.x * 32766.0f, data.y, data.zw));
+    //imageStore(volumeData, ivec3(pos), ivec4(data.x * 32766.0f, data.y, data.zw));
+    imageStore(volumeData, ivec3(pos), data);
+
 }
 
 void main()
@@ -52,34 +55,47 @@ void main()
     vec3 delta = rotate(invTrack, vec3(0.0f, 0.0f, volDim.z / volSize.z));
     vec3 cameraDelta = rotate(K, delta);
 
+   // imageStore(volumeData, ivec3(pix.xy, 128), vec4(1, 2, 0, 0));
 
-    for (pix.z = 0; pix.z < volSize.z; ++pix.z, pos += delta, cameraX += cameraDelta)
+    for (int i = 128 - 16; i < 128+ 16; i++)
     {
-        if (pos.z > 0.0001f) 
+        for (int j = 128 - 16; j < 128 + 16; j++)
         {
-            vec2 pixel = vec2(cameraX.x / cameraX.z + 0.5f, cameraX.y / cameraX.z + 0.5f);
-            if (pixel.x > 0 || pixel.x < depthSize.x - 1 || pixel.y > 0 || pixel.y < depthSize.y - 1)
+            for (int k = 128 - 4; k < 128 + 4; k++)
             {
-                uvec2 px = uvec2(pixel.x, pixel.y);
-                vec4 depth = imageLoad(depthImage, ivec2(px));
-                depth.x = depth.x / 1000.0f;
-                if (depth.x > 0)
-                {
-                    float diff = (depth.x - cameraX.z) * sqrt(1 + pow(pos.x / pos.z, 2) + pow(pos.y / pos.z, 2));
-                    if (diff > -mu)
-                    {
-                        float sdf = min(1.0f, diff / mu);
-
-                        vec4 data = vs(pix);
-                        data.x = clamp((data.y * data.x + sdf) / (data.y + 1), -1.0f, 1.0f);
-                        data.y = min(data.y + 1, maxWeight);
-                        set(pix, data);
-
-                    }
-
-
-                }
+                imageStore(volumeData, ivec3(i, j, k), vec4(k - 128, 2, 0, 0));
             }
         }
     }
+
+
+    //for (pix.z = 0; pix.z < volSize.z; ++pix.z, pos += delta, cameraX += cameraDelta)
+    //{
+    //    if (pos.z > 0.0001f)
+    //    {
+    //        vec2 pixel = vec2(cameraX.x / cameraX.z + 0.5f, cameraX.y / cameraX.z + 0.5f);
+    //        if (pixel.x > 0 || pixel.x < depthSize.x - 1 || pixel.y > 0 || pixel.y < depthSize.y - 1)
+    //        {
+    //            uvec2 px = uvec2(pixel.x, pixel.y);
+    //            vec4 depth = imageLoad(depthImage, ivec2(px));
+    //            depth.x = depth.x / 1000.0f;
+    //            if (depth.x > 0)
+    //            {
+    //                float diff = (depth.x - cameraX.z) * sqrt(1 + pow(pos.x / pos.z, 2) + pow(pos.y / pos.z, 2));
+    //                if (diff > -mu)
+    //                {
+    //                    float sdf = min(1.0f, diff / mu);
+
+    //                    vec4 data = vs(pix);
+    //                    data.x = clamp((data.y * data.x + sdf) / (data.y + 1), -1.0f, 1.0f);
+    //                    data.y = min(data.y + 1, maxWeight);
+    //                    set(pix, data);
+
+    //                }
+
+
+    //            }
+    //        }
+    //    }
+    //}
 }
