@@ -428,7 +428,7 @@ void kRender::setVertPositions()
 void kRender::setVolume()
 {
 	std::vector<float> volume;
-	volume.resize(256 * 256 * 256 * 2, 1);
+	volume.resize(256 * 256 * 256 * 2, 0);
 
 	m_volume = volume;
 }
@@ -669,25 +669,14 @@ glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_color_width, m_color_height, 0, GL_RGB
 glBindTexture(GL_TEXTURE_2D, 0);
 
 // Texture for TSDF volume 
-
-//std::vector<short> fl;
-//fl.resize(256 * 256 * 256 * 2, 10);
-
 glGenTextures(1, &m_textureVolume);
 glActiveTexture(GL_TEXTURE10);
 glBindTexture(GL_TEXTURE_3D, m_textureVolume); // All upcoming GL_TEXTURE_3D operations now have effect on our texture object
 glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);	
 glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-glTexImage3D(GL_TEXTURE_3D, 0, GL_RG32F, 256, 256, 256, 0, GL_RG, GL_FLOAT, m_volume.data()); // make sure your internal formats are correct and any internal changing of formats doesnt take place. lets stic to floats, eh?
-
-
-//std::vector<short> vul;
-//vul.resize(256 * 256 * 256 * 2, 2);
-//glGetTexImage(GL_TEXTURE_3D, 0, GL_RG, GL_SHORT, vul.data());
-
-
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+glTexImage3D(GL_TEXTURE_3D, 0, GL_RG32F, 256, 256, 256, 0, GL_RG, GL_FLOAT, &m_volume[0]);
 glBindTexture(GL_TEXTURE_3D, 0);
 
 
@@ -826,14 +815,6 @@ void kRender::setBuffersForRendering(float * depthArray, float * bigDepthArray, 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, m_textureDepth);
 		glTexSubImage2D(GL_TEXTURE_2D, /*level*/0, /*xoffset*/0, /*yoffset*/0, m_depth_width, m_depth_height, GL_RED, GL_FLOAT, depthArray);
-	
-		//std::vector<float> vul;
-		//vul.resize(512 * 424);
-		//glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, vul.data());
-
-
-
-	
 	}
 
 
@@ -885,12 +866,6 @@ void kRender::setBuffersForRendering(float * depthArray, float * bigDepthArray, 
 		glBindTexture(GL_TEXTURE_2D, m_textureEdges);
 	}
 
-	glActiveTexture(GL_TEXTURE10);
-	glBindTexture(GL_TEXTURE_3D, m_textureVolume);
-	//glTexSubImage3D(GL_TEXTURE_3D, /*level*/0, /*xoffset*/0, /*yoffset*/0, /*zoffset*/0, 256, 256, 256, GL_RG, GL_SHORT, &m_volume[0]);
-	//std::vector<short> vul;
-	//vul.resize(256 * 256 * 256 * 2, 2);
-	//glGetTexImage(GL_TEXTURE_3D, 0, GL_RG, GL_SHORT, vul.data());
 
 }
 
@@ -1362,16 +1337,8 @@ void kRender::integrateVolume()
 	glm::vec3 volSize = glm::vec3(1.0f, 1.0f, 1.0f);
 
 	//bind image textures
-	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG32F);
+	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG16I);
 	glBindImageTexture(1, m_textureBigDepth, 0, GL_FALSE, 0, GL_READ_WRITE, GL_R32F);
-
-
-
-
-	int xWidth;
-	int yWidth;
-
-	integrateTSDFProg.use();
 
 	glUniformMatrix4fv(m_invTrackID, 1, GL_FALSE, glm::value_ptr(pose));
 	glUniformMatrix4fv(m_KID, 1, GL_FALSE, glm::value_ptr(K));
@@ -1381,21 +1348,25 @@ void kRender::integrateVolume()
 	glUniform3fv(m_volSizeID, 1, glm::value_ptr(volSize));
 
 
+	int xWidth;
+	int yWidth;
+
+	integrateTSDFProg.use();
+
 	xWidth = divup(256, 32);
 	yWidth = divup(256, 32);
 
 
 	glDispatchCompute(xWidth, yWidth, 1);
-	glMemoryBarrier(GL_SHADER_IMAGE_ACCESS_BARRIER_BIT);
+	glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
 }
 
 void kRender::raycastVolume()
 {
-	raycastTSDFProg.use();
 
 	glm::mat4 invK = getInverseCameraMatrix(m_cameraParams_color); // make sure im set
-	glm::mat4 pose = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.0f));
+	glm::mat4 pose = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0));
 
 	glm::mat4 view = pose * invK;
 	float nearPlane = 0.01f;
@@ -1406,33 +1377,11 @@ void kRender::raycastVolume()
 	glm::vec3 volSize = glm::vec3(1.0f, 1.0f, 1.0f);
 
 	//bind image textures
-	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG32F);
-
-
-
-	//glCopyImageSubData(m_textureVolume, GL_TEXTURE_3D, 0, 0, 0, 0,
-	//	tTex, GL_TEXTURE_3D, 0, 0, 0, 0,
-	//	256, 256, 256);
-
-	//glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
-	glActiveTexture(GL_TEXTURE10);
-	glBindTexture(GL_TEXTURE_3D, m_textureVolume);
-
-	////glTexSubImage3D(GL_TEXTURE_3D, /*level*/0, /*xoffset*/0, /*yoffset*/0, /*zoffset*/0, 256, 256, 256, GL_RG, GL_SHORT, &m_volume[0]);
-	//std::vector<short> vul;
-	//vul.resize(256 * 256 * 256 * 2, 2);
-	//glGetTexImage(GL_TEXTURE_3D, 0, GL_RG, GL_SHORT, vul.data());
+	glBindImageTexture(0, m_textureVolume, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RG16I);
 
 	// bind the volume texture for 3D sampling
 	//glActiveTexture(GL_TEXTURE0);
 	//glBindTexture(GL_TEXTURE_3D, m_textureVolume);
-
-
-
-	int xWidth;
-	int yWidth;
-
 
 	// bind uniforms
 	glUniformMatrix4fv(m_viewID_r, 1, GL_FALSE, glm::value_ptr(view));
@@ -1442,6 +1391,11 @@ void kRender::raycastVolume()
 	glUniform1f(m_largeStepID, largeStep);
 	glUniform3fv(m_volDimID_r, 1, glm::value_ptr(volDim));
 	glUniform3fv(m_volSizeID_r, 1, glm::value_ptr(volSize));
+
+	int xWidth;
+	int yWidth;
+
+	raycastTSDFProg.use();
 
 	xWidth = divup(256, 32);
 	yWidth = divup(256, 32);

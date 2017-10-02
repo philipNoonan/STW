@@ -2,9 +2,9 @@
 
 layout(local_size_x = 32, local_size_y = 32) in;
 
-layout(binding= 10) uniform sampler3D volumeDataTexture;
+layout(binding= 0) uniform isampler3D volumeDataTexture;
 
-layout(binding = 0, rg32f) uniform image3D volumeData; // Gimage3D, where G = i, u, or blank, for int, u int, and floats respectively
+layout(binding = 0, rg16i) uniform iimage3D volumeData; // Gimage3D, where G = i, u, or blank, for int, u int, and floats respectively
 
 layout(std430, binding= 0) buffer pos3D // ouput
 {
@@ -37,7 +37,7 @@ vec3 rotate(mat4 inputMat4, vec3 inputVec3)
                 dot(inputMat4[2].xyz, inputVec3));
 }
 
-vec3 opMul(mat4 M, vec3 v) // thsi needs to be transposed
+vec3 opMul(mat4 M, vec3 v)
 {
     return vec3(
         dot(M[0].xyz, v) + M[0].w,
@@ -47,13 +47,13 @@ vec3 opMul(mat4 M, vec3 v) // thsi needs to be transposed
 
 vec4 raycast(uvec2 pos)
 {
-    vec3 origin = vec3(view[3].x, view[3].y, view[3].z);
+    vec3 origin = vec3(view[0].w, view[1].w, view[2].w);
     vec3 direction = rotate(view, vec3(pos.x, pos.y, 1.0f));
 
     // intersect ray with a box
     // http://www.siggraph.org/education/materials/HyperGraph/raytrace/rtinter3.htm
     // compute intersection of ray with all six bbox planes
-    vec3 invR = 1.0f / direction;
+    vec3 invR = vec3(1.0f, 1.0f, 1.0f) / direction;
     vec3 tbot = -1.0f * invR * origin;
     vec3 ttop = invR * (volDim - origin);
     // re-order intersections to find smallest and largest on each axis
@@ -68,17 +68,13 @@ vec4 raycast(uvec2 pos)
 
     if (tnear < tfar)
     {
-
-        //return vec4(0.0f, 0.0f, 0.0f, 2.0f);
-
-
         // first walk with largesteps until we found a hit
         float t = tnear;
         float stepsize = largeStep;
         //float f_t = volume.interp(origin + direction * t); // do a sampler3D?
 
-        vec4 interpData = texture(volumeDataTexture, vec3(origin + direction * t));
-        float f_t = interpData.x;// * 0.00003051944088f;
+        ivec4 interpData = texture(volumeDataTexture, vec3(origin + direction * t));
+        float f_t = interpData.x * 0.00003051944088f;
 
 
         float f_tt = 0;
@@ -87,14 +83,8 @@ vec4 raycast(uvec2 pos)
             for (; t < tfar; t += stepsize)
             {
                 //f_tt = volume.interp(origin + direction * t); // another sampler3d
-                vec4 interpData = texture(volumeDataTexture, vec3(origin + direction * t));
-
-                LOOK AT ME HERE< MAKE SURE DATA COMING BACK FROM THIS READ MAKES SENSE!!!
-
-
-
-
-                f_tt = interpData.x;// * 0.00003051944088f;
+                ivec4 interpData = texture(volumeDataTexture, vec3(origin + direction * t));
+                f_tt = interpData.x * 0.00003051944088f;
                 if (f_tt < 0) // got it, jump out of inner loop
                 {
                     break; // 
@@ -120,7 +110,7 @@ vec4 raycast(uvec2 pos)
 float vs(uvec3 pos)
 {
     vec4 data = imageLoad(volumeData, ivec3(pos));
-    return data.x;// * 0.00003051944088f; // convert short to float
+    return data.x * 0.00003051944088f; // convert short to float
 }
 
 vec3 getGradient(vec4 hit)
@@ -174,43 +164,35 @@ vec3 getGradient(vec4 hit)
 
 void main()
 {
-    ivec3 depthSize = imageSize(volumeData);
+    ivec2 depthSize = imageSize(depthImage);
     uvec2 pix = gl_GlobalInvocationID.xy;
 
-    //vec4 data = imageLoad(volumeData, ivec3(pix.xy, 128));
-    //vec4 data2 = texelFetch(volumeDataTexture, ivec3(pix.xy, 128), 0);
 
-    //if (data2.x == 1 && data.y == 2)
-    //{
-    //    PositionTSDF[(pix.y * depthSize.x) + pix.x] = vec4(pix.x, pix.y, 2000.0f, 1.0f);
-    //}
 
     vec4 hit = raycast(pix);
 
-    //////barrier(); // do we need this???can we read from an imageLoad and sampler3D on same texture?
-
-   
+    //barrier(); // do we need this???can we read from an imageLoad and sampler3D on same texture?
 
 
-    if (hit.w == 2)
+
+    if (hit.w > 0)
     {
-       //PositionTSDF[(pix.y * depthSize.x) + pix.x] = vec4(pix.x, pix.y, 2000.0f, 1.0f);
         PositionTSDF[(pix.y * depthSize.x) + pix.x] = hit;
 
-       // vec3 surfNorm = getGradient(hit);// volume.grad(make_float3(hit));
-       // if (length(surfNorm) == 0)
-       // {
-       //     NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0);
-       // }
-       // else
-       // {
-       //     NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(normalize(surfNorm), 0.0f);
-       // }
+        vec3 surfNorm = getGradient(hit);// volume.grad(make_float3(hit));
+        if (length(surfNorm) == 0)
+        {
+            NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0);
+        }
+        else
+        {
+            NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(normalize(surfNorm), 0.0f);
+        }
     }
     else
     {
-    //    PositionTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0);
-   //     NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0, 0, 0, 0); // set x = 2??
+        PositionTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0);
+        NormalTSDF[(pix.y * depthSize.x) + pix.x] = vec4(0, 0, 0, 0); // set x = 2??
     }
 
 
